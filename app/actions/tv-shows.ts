@@ -180,6 +180,66 @@ export async function getNextEpisodeForSeries(seriesId: string): Promise<Jellyfi
   }
 }
 
+export async function fetchEpisodesForCurrentSeason(episodeId: string): Promise<JellyfinItem[]> {
+  const { serverUrl, user } = await getAuthData();
+  const jellyfinInstance = createJellyfinInstance();
+  const api = jellyfinInstance.createApi(serverUrl);
+  api.accessToken = user.AccessToken;
+
+  try {
+    const itemsApi = new ItemsApi(api.configuration);
+
+    // First get the current episode details to find the season
+    const { data: episodeData } = await itemsApi.getItems({
+      userId: user.Id,
+      ids: [episodeId],
+      fields: [ItemFields.Overview, ItemFields.MediaSources],
+    });
+
+    if (!episodeData.Items || episodeData.Items.length === 0) {
+      return [];
+    }
+
+    const currentEpisode = episodeData.Items[0];
+    const seriesId = currentEpisode.SeriesId;
+    const seasonNumber = currentEpisode.ParentIndexNumber;
+
+    if (!seriesId || seasonNumber === undefined) {
+      return [];
+    }
+
+    // Get all episodes for the series
+    const { data } = await itemsApi.getItems({
+      userId: user.Id,
+      parentId: seriesId,
+      includeItemTypes: [BaseItemKind.Episode],
+      recursive: true,
+      sortBy: [ItemSortBy.ParentIndexNumber, ItemSortBy.IndexNumber],
+      sortOrder: [SortOrder.Ascending, SortOrder.Ascending],
+      fields: [
+        ItemFields.CanDelete,
+        ItemFields.PrimaryImageAspectRatio,
+        ItemFields.Overview,
+        ItemFields.MediaSources,
+      ],
+    });
+
+    if (!data.Items || data.Items.length === 0) {
+      return [];
+    }
+
+    // Filter episodes for the current season
+    const seasonEpisodes = data.Items.filter(episode =>
+      episode.ParentIndexNumber === seasonNumber
+    );
+
+    return seasonEpisodes;
+  } catch (error) {
+    console.error("Failed to fetch episodes for current season:", error);
+    return [];
+  }
+}
+
 export async function fetchNextUpItems(limit: number = 24): Promise<JellyfinItem[]> {
   try {
     const { serverUrl, user } = await getAuthData();
@@ -212,7 +272,41 @@ export async function fetchNextUpItems(limit: number = 24): Promise<JellyfinItem
       // Remove nextUpDateCutoff to get all shows the user has started watching
     });
 
-    return data.Items || [];
+    const items = data.Items || [];
+
+    // Filter out excluded series
+    const { cookies } = await import("next/headers");
+    const cookieStore = await cookies();
+    const excludedSeries = cookieStore.get("excluded-from-next-up");
+    let excludedList: string[] = [];
+
+    if (excludedSeries?.value) {
+      try {
+        excludedList = JSON.parse(excludedSeries.value);
+        console.log("Excluded series list:", excludedList);
+      } catch (error) {
+        console.error("Failed to parse excluded series in fetchNextUpItems:", error);
+        excludedList = [];
+      }
+    } else {
+      console.log("No excluded series cookie found");
+    }
+
+    // Filter out episodes from excluded series
+    const filteredItems = items.filter(item => {
+      if (item.Type === "Episode" && item.SeriesId) {
+        const isExcluded = excludedList.includes(item.SeriesId);
+        if (isExcluded) {
+          console.log("Filtering out episode from excluded series:", item.SeriesId, item.Name);
+        }
+        return !isExcluded;
+      }
+      return true;
+    });
+
+    console.log(`Filtered ${items.length} items to ${filteredItems.length} items`);
+
+    return filteredItems;
   } catch (error) {
     console.error("Failed to fetch next up items:", error);
     return [];

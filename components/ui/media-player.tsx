@@ -39,6 +39,7 @@ import {
   RepeatIcon,
   RewindIcon,
   RotateCcwIcon,
+  ListIcon,
   SettingsIcon,
   SubtitlesIcon,
   Volume1Icon,
@@ -56,6 +57,7 @@ import {
 } from "media-chrome/dist/react/media-store";
 import * as React from "react";
 import * as ReactDOM from "react-dom";
+import { JellyfinItem } from "@/types/jellyfin";
 
 const ROOT_NAME = "MediaPlayer";
 const SEEK_NAME = "MediaPlayerSeek";
@@ -522,6 +524,10 @@ function MediaPlayerRootImpl(props: MediaPlayerRootProps) {
               type: MediaActionTypes.MEDIA_SEEK_REQUEST,
               detail: Math.max(0, mediaElement.currentTime - SEEK_STEP_SHORT),
             });
+          }
+
+          if (isVideo && event.ctrlKey) {
+
           }
           break;
 
@@ -1313,7 +1319,7 @@ function MediaPlayerControlsOverlay(props: MediaPlayerControlsOverlayProps) {
   );
 }
 
-interface MediaPlayerPlayProps extends React.ComponentProps<typeof Button> {}
+interface MediaPlayerPlayProps extends React.ComponentProps<typeof Button> { }
 
 function MediaPlayerPlay(props: MediaPlayerPlayProps) {
   const { asChild, children, className, disabled, ...playButtonProps } = props;
@@ -1511,8 +1517,8 @@ interface MediaPlayerSeekProps
   tooltipSideOffset?: number;
   tooltipCollisionBoundary?: Element | Element[];
   tooltipCollisionPadding?:
-    | number
-    | Partial<Record<"top" | "right" | "bottom" | "left", number>>;
+  | number
+  | Partial<Record<"top" | "right" | "bottom" | "left", number>>;
 }
 
 function MediaPlayerSeek(props: MediaPlayerSeekProps) {
@@ -1625,11 +1631,11 @@ function MediaPlayerSeek(props: MediaPlayerSeekProps) {
     const padding =
       typeof tooltipCollisionPadding === "number"
         ? {
-            top: tooltipCollisionPadding,
-            right: tooltipCollisionPadding,
-            bottom: tooltipCollisionPadding,
-            left: tooltipCollisionPadding,
-          }
+          top: tooltipCollisionPadding,
+          right: tooltipCollisionPadding,
+          bottom: tooltipCollisionPadding,
+          left: tooltipCollisionPadding,
+        }
         : { top: 0, right: 0, bottom: 0, left: 0, ...tooltipCollisionPadding };
 
     const boundaries = tooltipCollisionBoundary
@@ -2474,9 +2480,9 @@ function MediaPlayerTime(props: MediaPlayerTimeProps) {
 
 interface MediaPlayerPlaybackSpeedProps
   extends React.ComponentProps<typeof DropdownMenuTrigger>,
-    React.ComponentProps<typeof Button>,
-    Omit<React.ComponentProps<typeof DropdownMenu>, "dir">,
-    Pick<React.ComponentProps<typeof DropdownMenuContent>, "sideOffset"> {
+  React.ComponentProps<typeof Button>,
+  Omit<React.ComponentProps<typeof DropdownMenu>, "dir">,
+  Pick<React.ComponentProps<typeof DropdownMenuContent>, "sideOffset"> {
   speeds?: number[];
 }
 
@@ -2566,7 +2572,7 @@ function MediaPlayerPlaybackSpeed(props: MediaPlayerPlaybackSpeedProps) {
   );
 }
 
-interface MediaPlayerLoopProps extends React.ComponentProps<typeof Button> {}
+interface MediaPlayerLoopProps extends React.ComponentProps<typeof Button> { }
 
 function MediaPlayerLoop(props: MediaPlayerLoopProps) {
   const { children, className, disabled, ...loopProps } = props;
@@ -2642,7 +2648,7 @@ function MediaPlayerLoop(props: MediaPlayerLoopProps) {
 }
 
 interface MediaPlayerFullscreenProps
-  extends React.ComponentProps<typeof Button> {}
+  extends React.ComponentProps<typeof Button> { }
 
 function MediaPlayerFullscreen(props: MediaPlayerFullscreenProps) {
   const { children, className, disabled, ...fullscreenProps } = props;
@@ -2763,7 +2769,7 @@ function MediaPlayerPiP(props: MediaPlayerPiPProps) {
 }
 
 interface MediaPlayerCaptionsProps
-  extends React.ComponentProps<typeof Button> {}
+  extends React.ComponentProps<typeof Button> { }
 
 function MediaPlayerCaptions(props: MediaPlayerCaptionsProps) {
   const { children, className, disabled, ...captionsProps } = props;
@@ -2813,7 +2819,7 @@ function MediaPlayerCaptions(props: MediaPlayerCaptionsProps) {
 }
 
 interface MediaPlayerDownloadProps
-  extends React.ComponentProps<typeof Button> {}
+  extends React.ComponentProps<typeof Button> { }
 
 function MediaPlayerDownload(props: MediaPlayerDownloadProps) {
   const { children, className, disabled, ...downloadProps } = props;
@@ -2863,7 +2869,242 @@ function MediaPlayerDownload(props: MediaPlayerDownloadProps) {
   );
 }
 
-interface MediaPlayerSettingsProps extends MediaPlayerPlaybackSpeedProps {}
+interface MediaPlayerNextEpisodeProps extends React.ComponentProps<typeof Button> {
+  nextEpisode?: JellyfinItem | null;
+  onNextEpisode?: () => void;
+}
+
+function MediaPlayerNextEpisode(props: MediaPlayerNextEpisodeProps) {
+  const { children, className, disabled, nextEpisode, onNextEpisode, ...nextEpisodeProps } = props;
+
+  const context = useMediaPlayerContext("MediaPlayerNextEpisode");
+  const isDisabled = disabled || context.disabled || !nextEpisode;
+
+  const onNextEpisodeClick = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      props.onClick?.(event);
+
+      if (event.defaultPrevented) return;
+
+      onNextEpisode?.();
+    },
+    [props.onClick, onNextEpisode]
+  );
+
+  return (
+    <MediaPlayerTooltip tooltip={`Next: ${nextEpisode?.Name || 'Episode'}`} shortcut="Ctrl + →">
+      <Button
+        type="button"
+        aria-controls={context.mediaId}
+        aria-label={`Next: ${nextEpisode?.Name || 'Episode'}`}
+        data-disabled={isDisabled ? "" : undefined}
+        data-slot="media-player-next-episode"
+        disabled={isDisabled}
+        {...nextEpisodeProps}
+        variant="ghost"
+        size="icon"
+        className={cn("size-8", className)}
+        onClick={onNextEpisodeClick}
+      >
+        {children ?? <FastForwardIcon />}
+      </Button>
+    </MediaPlayerTooltip>
+  );
+}
+
+interface MediaPlayerPreviousEpisodeProps extends React.ComponentProps<typeof Button> {
+  previousEpisode?: JellyfinItem | null;
+  onPreviousEpisode?: () => void;
+}
+
+function MediaPlayerPreviousEpisode(props: MediaPlayerPreviousEpisodeProps) {
+  const { children, className, disabled, previousEpisode, onPreviousEpisode, ...previousEpisodeProps } = props;
+
+  const context = useMediaPlayerContext("MediaPlayerPreviousEpisode");
+  const isDisabled = disabled || context.disabled || !previousEpisode;
+
+  const onPreviousEpisodeClick = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      props.onClick?.(event);
+
+      if (event.defaultPrevented) return;
+
+      onPreviousEpisode?.();
+    },
+    [props.onClick, onPreviousEpisode]
+  );
+
+  if (!previousEpisode) return null;
+
+  return (
+    <MediaPlayerTooltip tooltip={`Previous: ${previousEpisode.Name || 'Episode'}`} shortcut="Ctrl + ←">
+      <Button
+        type="button"
+        aria-controls={context.mediaId}
+        aria-label={`Previous: ${previousEpisode.Name || 'Episode'}`}
+        data-disabled={isDisabled ? "" : undefined}
+        data-slot="media-player-previous-episode"
+        disabled={isDisabled}
+        {...previousEpisodeProps}
+        variant="ghost"
+        size="icon"
+        className={cn("size-8", className)}
+        onClick={onPreviousEpisodeClick}
+      >
+        {children ?? <RewindIcon />}
+      </Button>
+    </MediaPlayerTooltip>
+  );
+}
+
+interface MediaPlayerEpisodeSelectorProps extends React.ComponentProps<typeof Button> {
+  episodes?: JellyfinItem[];
+  currentEpisodeId?: string;
+  onEpisodeSelect?: (episode: any) => void;
+  seriesName?: string;
+  seasonNumber?: number;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+}
+
+function MediaPlayerEpisodeSelector(props: MediaPlayerEpisodeSelectorProps) {
+  const {
+    children,
+    className,
+    disabled,
+    episodes,
+    currentEpisodeId,
+    onEpisodeSelect,
+    seriesName,
+    seasonNumber,
+    open,
+    onOpenChange,
+    onClick,
+    ...episodeSelectorProps
+  } = props;
+
+  const context = useMediaPlayerContext("MediaPlayerEpisodeSelector");
+  const isDisabled = disabled || context.disabled || !episodes || episodes.length === 0;
+
+  const formatRuntime = (runTimeTicks: number) => {
+    const minutes = Math.floor(runTimeTicks / 600000000);
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+
+    if (hours > 0) {
+      return `${hours}h ${remainingMinutes}m`;
+    }
+    return `${minutes}m`;
+  };
+
+  if (!episodes || episodes.length === 0) return null;
+
+  return (
+    <DropdownMenu open={open} onOpenChange={onOpenChange}>
+      <DropdownMenuTrigger asChild>
+        <MediaPlayerTooltip tooltip="Episode Selector" shortcut="E">
+          <Button
+            type="button"
+            aria-controls={context.mediaId}
+            aria-label="Episode Selector"
+            data-disabled={isDisabled ? "" : undefined}
+            data-slot="media-player-episode-selector"
+            disabled={isDisabled}
+            onClick={(e) => onClick?.(e)}
+            {...episodeSelectorProps}
+            variant="ghost"
+            size="icon"
+            className={cn("size-8", className)}
+          >
+            {children ?? <ListIcon />}
+          </Button>
+        </MediaPlayerTooltip>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        className="w-96 bg-black/95 border-white/20 text-white z-[1000000] max-h-96 overflow-hidden"
+        side="top"
+        align="center"
+        sideOffset={10}
+        avoidCollisions={true}
+        collisionPadding={20}
+      >
+        <div className="space-y-3">
+          <h3 className="font-semibold text-lg">
+            {seriesName} - Season {seasonNumber}
+          </h3>
+          <div className="max-h-80 overflow-y-auto space-y-2">
+            {episodes.map((episode) => {
+              const isCurrentEpisode = episode.Id === currentEpisodeId;
+              const isWatched = episode.UserData?.Played;
+              const progress = episode.UserData?.PlayedPercentage || 0;
+
+              return (
+                <div
+                  key={episode.Id}
+                  className={`group relative rounded-lg overflow-hidden cursor-pointer transition-all p-3 ${isCurrentEpisode
+                    ? 'bg-white/20 ring-1 ring-white/40'
+                    : 'hover:bg-white/10'
+                    }`}
+                  onClick={() => onEpisodeSelect?.(episode)}
+                >
+                  <div className="flex items-center space-x-3">
+                    {/* Episode Number */}
+                    <div className="flex-shrink-0 w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-sm font-semibold">
+                      {episode.IndexNumber}
+                    </div>
+
+                    {/* Episode Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="font-medium text-sm truncate">
+                          {episode.Name}
+                        </h4>
+                        {isWatched && (
+                          <div className="flex-shrink-0 w-4 h-4 bg-green-600 rounded-full flex items-center justify-center">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                          </div>
+                        )}
+                        {isCurrentEpisode && (
+                          <div className="flex-shrink-0 bg-white/90 text-black px-2 py-0.5 rounded text-xs font-semibold">
+                            Now Playing
+                          </div>
+                        )}
+                      </div>
+                      {episode.Overview && (
+                        <p className="text-xs text-white/70 mt-1 line-clamp-2">
+                          {episode.Overview}
+                        </p>
+                      )}
+                      <div className="flex items-center gap-2 mt-1">
+                        {episode.RunTimeTicks && (
+                          <span className="text-xs text-white/60">
+                            {formatRuntime(episode.RunTimeTicks)}
+                          </span>
+                        )}
+                        {progress > 0 && progress < 100 && (
+                          <div className="flex-1 bg-white/20 rounded-full h-1">
+                            <div
+                              className="h-full bg-white/80 rounded-full"
+                              style={{ width: `${progress}%` }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+interface MediaPlayerSettingsProps extends MediaPlayerPlaybackSpeedProps { }
 
 function MediaPlayerSettings(props: MediaPlayerSettingsProps) {
   const {
@@ -3104,8 +3345,8 @@ function MediaPlayerSettings(props: MediaPlayerSettingsProps) {
                 ? context.customSubtitleTracks &&
                   context.customSubtitleTracks.length > 0
                   ? context.customSubtitleTracks
-                      .find((track) => track.active)
-                      ?.label?.split(" ")[0] || "On"
+                    .find((track) => track.active)
+                    ?.label?.split(" ")[0] || "On"
                   : "Off"
                 : selectedSubtitleLabel.split(" ")[0]}
             </Badge>
@@ -3128,43 +3369,43 @@ function MediaPlayerSettings(props: MediaPlayerSettingsProps) {
             </DropdownMenuItem>
             {context.customSubtitlesEnabled
               ? context.customSubtitleTracks?.map((subtitleTrack) => {
-                  return (
-                    <DropdownMenuItem
-                      key={`${subtitleTrack.kind}-${subtitleTrack.label}-${subtitleTrack.language}`}
-                      className="justify-between"
-                      onSelect={() =>
-                        context.onCustomSubtitleChange?.(subtitleTrack)
-                      }
-                    >
-                      {subtitleTrack.label}
-                      {subtitleTrack.active && <CheckIcon />}
-                    </DropdownMenuItem>
-                  );
-                })
+                return (
+                  <DropdownMenuItem
+                    key={`${subtitleTrack.kind}-${subtitleTrack.label}-${subtitleTrack.language}`}
+                    className="justify-between"
+                    onSelect={() =>
+                      context.onCustomSubtitleChange?.(subtitleTrack)
+                    }
+                  >
+                    {subtitleTrack.label}
+                    {subtitleTrack.active && <CheckIcon />}
+                  </DropdownMenuItem>
+                );
+              })
               : mediaSubtitlesList.map((subtitleTrack) => {
-                  const isSelected = mediaSubtitlesShowing.some(
-                    (showingSubtitle) =>
-                      showingSubtitle.label === subtitleTrack.label
-                  );
-                  return (
-                    <DropdownMenuItem
-                      key={`${subtitleTrack.kind}-${subtitleTrack.label}-${subtitleTrack.language}-${crypto.randomUUID()}`}
-                      className="justify-between"
-                      onSelect={() => onShowSubtitleTrack(subtitleTrack)}
-                    >
-                      {subtitleTrack.label}
-                      {isSelected && <CheckIcon />}
-                    </DropdownMenuItem>
-                  );
-                })}
+                const isSelected = mediaSubtitlesShowing.some(
+                  (showingSubtitle) =>
+                    showingSubtitle.label === subtitleTrack.label
+                );
+                return (
+                  <DropdownMenuItem
+                    key={`${subtitleTrack.kind}-${subtitleTrack.label}-${subtitleTrack.language}-${crypto.randomUUID()}`}
+                    className="justify-between"
+                    onSelect={() => onShowSubtitleTrack(subtitleTrack)}
+                  >
+                    {subtitleTrack.label}
+                    {isSelected && <CheckIcon />}
+                  </DropdownMenuItem>
+                );
+              })}
             {(context.customSubtitlesEnabled
               ? !context.customSubtitleTracks ||
-                context.customSubtitleTracks.length === 0
+              context.customSubtitleTracks.length === 0
               : mediaSubtitlesList.length === 0) && (
-              <DropdownMenuItem disabled>
-                No captions available
-              </DropdownMenuItem>
-            )}
+                <DropdownMenuItem disabled>
+                  No captions available
+                </DropdownMenuItem>
+              )}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
       </DropdownMenuContent>
@@ -3190,7 +3431,7 @@ function MediaPlayerPortal(props: MediaPlayerPortalProps) {
 
 interface MediaPlayerTooltipProps
   extends React.ComponentProps<typeof Tooltip>,
-    Pick<React.ComponentProps<typeof TooltipContent>, "sideOffset"> {
+  Pick<React.ComponentProps<typeof TooltipContent>, "sideOffset"> {
   tooltip?: string;
   shortcut?: string | string[];
 }
@@ -3276,6 +3517,9 @@ export {
   MediaPlayerPiP,
   MediaPlayerCaptions,
   MediaPlayerDownload,
+  MediaPlayerNextEpisode,
+  MediaPlayerPreviousEpisode,
+  MediaPlayerEpisodeSelector,
   MediaPlayerSettings,
   MediaPlayerPortal,
   MediaPlayerTooltip,
@@ -3300,6 +3544,7 @@ export {
   MediaPlayerPiP as PiP,
   MediaPlayerCaptions as Captions,
   MediaPlayerDownload as Download,
+  MediaPlayerEpisodeSelector as EpisodeSelector,
   MediaPlayerSettings as Settings,
   MediaPlayerPortal as Portal,
   MediaPlayerTooltip as Tooltip,

@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/dialog";
 import { MediaInfoDialog } from "@/components/media-info-dialog";
 import { ImageEditorDialog } from "@/components/image-editor-dialog";
-import { Info, Download, Play, ArrowLeft } from "lucide-react";
+import { Info, Download, Play, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import {
   getDownloadUrl,
   getStreamUrl,
@@ -36,6 +36,9 @@ import {
 } from "@/lib/utils";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
 import { DolbyDigital, DolbyTrueHd, DolbyVision, DtsHd } from "./icons/codecs";
+import { markItemAsPlayed, markItemAsUnplayed } from "@/app/actions/playback";
+import { toast } from "sonner";
+import { useRouter } from "next/navigation";
 
 interface MediaActionsProps {
   movie?: JellyfinItem;
@@ -46,9 +49,11 @@ interface MediaActionsProps {
 export function MediaActions({ movie, show, episode }: MediaActionsProps) {
   const media = movie || show || episode;
   const { isPlayerVisible, setIsPlayerVisible, playMedia } = useMediaPlayer();
+  const router = useRouter();
   const [selectedVersion, setSelectedVersion] =
     useState<MediaSourceInfo | null>(null);
   const [userPolicy, setUserPolicy] = useState<UserPolicy | null>(null);
+  const [isPlayed, setIsPlayed] = useState(media?.UserData?.Played || false);
 
   // Determine if this is a resume or new play
   const hasProgress =
@@ -66,6 +71,11 @@ export function MediaActions({ movie, show, episode }: MediaActionsProps) {
       setSelectedVersion(media.MediaSources[0]);
     }
   }, [media]);
+
+  // Update isPlayed state when media changes
+  useEffect(() => {
+    setIsPlayed(media?.UserData?.Played || false);
+  }, [media?.UserData?.Played]);
 
   // Fetch user policy when component mounts
   useEffect(() => {
@@ -125,6 +135,26 @@ export function MediaActions({ movie, show, episode }: MediaActionsProps) {
 
   const download = async () => {
     window.open(await getDownloadUrl(selectedVersion.Id!), "_blank");
+  };
+
+  const handleMarkAsPlayed = async () => {
+    try {
+      await markItemAsPlayed(media.Id!);
+      setIsPlayed(true);
+      toast.success("Marked as played");
+    } catch (error) {
+      toast.error("Failed to mark as played");
+    }
+  };
+
+  const handleMarkAsUnplayed = async () => {
+    try {
+      await markItemAsUnplayed(media.Id!);
+      setIsPlayed(false);
+      toast.success("Marked as unplayed");
+    } catch (error) {
+      toast.error("Failed to mark as unplayed");
+    }
   };
 
   // Helper function to get display name for a media source
@@ -294,6 +324,27 @@ export function MediaActions({ movie, show, episode }: MediaActionsProps) {
           <Download className="h-4 w-4" />
         </Button>
 
+        {/* Mark as viewed button */}
+        {isPlayed ? (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleMarkAsUnplayed}
+            title="Mark as unplayed"
+          >
+            <EyeOff className="h-4 w-4" />
+          </Button>
+        ) : (
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={handleMarkAsPlayed}
+            title="Mark as played"
+          >
+            <Eye className="h-4 w-4" />
+          </Button>
+        )}
+
         <Dialog>
           <DialogTrigger asChild>
             <Button variant="outline" size="icon">
@@ -319,13 +370,13 @@ export function MediaActions({ movie, show, episode }: MediaActionsProps) {
         hasDolbyTrueHD(selectedVersion) ||
         hasDolbyVision(selectedVersion) ||
         hasDtsHd(selectedVersion)) && (
-        <div className="flex gap-4 ml-1 h-8 items-center mt-4 -mb-2">
-          {hasDolbyDigital(selectedVersion) && <DolbyDigital />}
-          {hasDolbyTrueHD(selectedVersion) && <DolbyTrueHd />}
-          {hasDolbyVision(selectedVersion) && <DolbyVision />}
-          {hasDtsHd(selectedVersion) && <DtsHd />}
-        </div>
-      )}
+          <div className="flex gap-4 ml-1 h-8 items-center mt-4 -mb-2">
+            {hasDolbyDigital(selectedVersion) && <DolbyDigital />}
+            {hasDolbyTrueHD(selectedVersion) && <DolbyTrueHd />}
+            {hasDolbyVision(selectedVersion) && <DolbyVision />}
+            {hasDtsHd(selectedVersion) && <DtsHd />}
+          </div>
+        )}
     </div>
   );
 }

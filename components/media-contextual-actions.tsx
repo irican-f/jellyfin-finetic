@@ -23,10 +23,15 @@ import {
     Info,
     RefreshCw,
     MoreVertical,
+    Eye,
+    EyeOff,
 } from "lucide-react";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
 import { toast } from "sonner";
 import { getDownloadUrl } from "@/app/actions/utils";
+import { markItemAsPlayed, markItemAsUnplayed, removeFromNextUp } from "@/app/actions/playback";
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 interface MediaContextualActionsProps {
     item: BaseItemDto;
@@ -64,13 +69,20 @@ export function MediaContextualActions({
     onRefreshMetadata,
 }: MediaContextualActionsProps) {
     const { playMedia, setIsPlayerVisible } = useMediaPlayer();
+    const router = useRouter();
+    const [isPlayed, setIsPlayed] = useState(item.UserData?.Played || false);
+
+    // Update isPlayed state when item changes
+    useEffect(() => {
+        setIsPlayed(item.UserData?.Played || false);
+    }, [item.UserData?.Played]);
 
     const handlePlay = async () => {
         if (onPlay) {
             onPlay();
         } else {
             try {
-                await playMedia({
+                playMedia({
                     id: item.Id!,
                     name: item.Name!,
                     type: item.Type as "Movie" | "Series" | "Episode",
@@ -185,6 +197,38 @@ export function MediaContextualActions({
         }
     };
 
+    const handleMarkAsPlayed = async () => {
+        try {
+            await markItemAsPlayed(item.Id!);
+            setIsPlayed(true);
+            toast.success("Marked as played");
+        } catch (error) {
+            toast.error("Failed to mark as played");
+        }
+    };
+
+    const handleMarkAsUnplayed = async () => {
+        try {
+            await markItemAsUnplayed(item.Id!);
+            setIsPlayed(false);
+            toast.success("Marked as unplayed");
+        } catch (error) {
+            toast.error("Failed to mark as unplayed");
+        }
+    };
+
+    const handleRemoveFromNextUp = async () => {
+        try {
+            await removeFromNextUp(item.SeriesId!);
+            setIsPlayed(true);
+            toast.success("Removed from Next Up");
+            // Trigger immediate refresh
+            router.refresh();
+        } catch (error) {
+            toast.error("Failed to remove from Next Up");
+        }
+    };
+
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -200,67 +244,89 @@ export function MediaContextualActions({
                 {/* Playback and Selection */}
                 <DropdownMenuItem onClick={handlePlay} className="cursor-pointer">
                     <Play className="h-4 w-4" />
-                    Lire
+                    Play
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handlePlayAll} className="cursor-pointer">
                     <PlayCircle className="h-4 w-4" />
-                    Tout lire à partir d'ici
+                    Play All from Here
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+
+                {/* Mark as played/unplayed */}
+                {isPlayed ? (
+                    <DropdownMenuItem onClick={handleMarkAsUnplayed} className="cursor-pointer">
+                        <EyeOff className="h-4 w-4" />
+                        Mark as Unplayed
+                    </DropdownMenuItem>
+                ) : (
+                    <DropdownMenuItem onClick={handleMarkAsPlayed} className="cursor-pointer">
+                        <Eye className="h-4 w-4" />
+                        Mark as Played
+                    </DropdownMenuItem>
+                )}
+
+                {/* Remove from Next Up - only show for episodes that are not played */}
+                {!isPlayed && item.Type === "Episode" && (
+                    <DropdownMenuItem onClick={handleRemoveFromNextUp} className="cursor-pointer">
+                        <Trash2 className="h-4 w-4" />
+                        Remove from Next Up
+                    </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
 
                 {/* Adding and Collection Management */}
                 <DropdownMenuItem onClick={handleSelect} className="cursor-pointer">
                     <CheckSquare className="h-4 w-4" />
-                    Sélectionner
+                    Select
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleAddToCollection} className="cursor-pointer">
                     <Plus className="h-4 w-4" />
-                    Ajouter à la collection
+                    Add to Collection
                 </DropdownMenuItem>
                 <DropdownMenuItem
                     onClick={handleAddToPlaylist}
                     className="cursor-pointer"
                 >
                     <Plus className="h-4 w-4" />
-                    Ajouter à la liste de lecture
+                    Add to Playlist
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
 
                 {/* File and Stream Operations */}
                 <DropdownMenuItem onClick={handleDownload} className="cursor-pointer">
                     <Download className="h-4 w-4" />
-                    Télécharger
+                    Download
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleCopyStreamUrl} className="cursor-pointer">
                     <Copy className="h-4 w-4" />
-                    Copier l'URL du flux
+                    Copy Stream URL
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleDelete} className="cursor-pointer text-destructive focus:text-destructive">
                     <Trash2 className="h-4 w-4" />
-                    Supprimer l'épisode
+                    Delete Episode
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
 
                 {/* Editing and Information */}
                 <DropdownMenuItem onClick={handleEditMetadata} className="cursor-pointer">
                     <Edit className="h-4 w-4" />
-                    Éditer les métadonnées
+                    Edit Metadata
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleModifyImages} className="cursor-pointer">
                     <Image className="h-4 w-4" />
-                    Modifier les images
+                    Modify Images
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleModifySubtitles} className="cursor-pointer">
                     <Subtitles className="h-4 w-4" />
-                    Modifier les sous-titres
+                    Modify Subtitles
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleMediaInfo} className="cursor-pointer">
                     <Info className="h-4 w-4" />
-                    Informations du média
+                    Media Information
                 </DropdownMenuItem>
                 <DropdownMenuItem onClick={handleRefreshMetadata} className="cursor-pointer">
                     <RefreshCw className="h-4 w-4" />
-                    Actualiser les métadonnées
+                    Refresh Metadata
                 </DropdownMenuItem>
             </DropdownMenuContent>
         </DropdownMenu>

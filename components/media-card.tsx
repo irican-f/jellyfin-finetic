@@ -4,8 +4,10 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
-import { Play } from "lucide-react";
+import { Play, Eye, EyeOff } from "lucide-react";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
+import { markItemAsPlayed, markItemAsUnplayed } from "@/app/actions/playback";
+import { toast } from "sonner";
 
 import { decode } from "blurhash";
 import { RetryImage } from "@/components/ui/retry-image";
@@ -53,6 +55,7 @@ export function MediaCard({
 
   const [imageLoaded, setImageLoaded] = useState(false);
   const [blurDataUrl, setBlurDataUrl] = useState<string | null>(null);
+  const [isPlayed, setIsPlayed] = useState(item.UserData?.Played || false);
 
   // Adjust image URL parameters based on container type
   const imageUrl = continueWatching
@@ -68,8 +71,6 @@ export function MediaCard({
     continueWatching ? 768 : 384,
     100
   ) : [];
-
-  console.log('MediaCard fallback URLs for', item.Name, ':', fallbackUrls);
 
   // Get blur hash
   const imageTag =
@@ -98,6 +99,11 @@ export function MediaCard({
       }
     }
   }, [blurHash, blurDataUrl]);
+
+  // Update isPlayed state when item changes
+  useEffect(() => {
+    setIsPlayed(item.UserData?.Played || false);
+  }, [item.UserData?.Played]);
 
   // Calculate progress percentage from resume position
   let progressPercentage = percentageWatched;
@@ -133,6 +139,32 @@ export function MediaCard({
         resumePositionTicks: resumePosition || item.UserData?.PlaybackPositionTicks,
       });
       setIsPlayerVisible(true);
+    }
+  };
+
+  const handleMarkAsPlayed = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      await markItemAsPlayed(item.Id!);
+      setIsPlayed(true);
+      toast.success("Marked as played");
+    } catch (error) {
+      toast.error("Failed to mark as played");
+    }
+  };
+
+  const handleMarkAsUnplayed = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    try {
+      await markItemAsUnplayed(item.Id!);
+      setIsPlayed(false);
+      toast.success("Marked as unplayed");
+    } catch (error) {
+      toast.error("Failed to mark as unplayed");
     }
   };
 
@@ -196,6 +228,27 @@ export function MediaCard({
               <Play className="h-6 w-6 text-white fill-white" />
             </button>
           </div>
+        </div>
+
+        {/* Mark as viewed button */}
+        <div className="absolute top-2 left-2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+          {isPlayed ? (
+            <button
+              onClick={handleMarkAsUnplayed}
+              className="bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-full p-1.5 transition-all duration-200 hover:scale-105"
+              title="Mark as unplayed"
+            >
+              <EyeOff className="h-4 w-4 text-white" />
+            </button>
+          ) : (
+            <button
+              onClick={handleMarkAsPlayed}
+              className="bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-full p-1.5 transition-all duration-200 hover:scale-105"
+              title="Mark as played"
+            >
+              <Eye className="h-4 w-4 text-white" />
+            </button>
+          )}
         </div>
 
         {/* Contextual Actions */}

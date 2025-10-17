@@ -31,7 +31,14 @@ export {
   fetchEpisodes,
   fetchTVShowDetails,
   fetchEpisodeDetails,
+  fetchEpisodesForCurrentSeason,
 } from './tv-shows';
+
+// Episode navigation actions
+export {
+  getNextEpisode,
+  getPreviousEpisode,
+} from './episode-navigation';
 
 // Search actions
 export {
