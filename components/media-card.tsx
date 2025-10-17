@@ -8,6 +8,9 @@ import { Play } from "lucide-react";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
 
 import { decode } from "blurhash";
+import { RetryImage } from "@/components/ui/retry-image";
+import { generateImageFallbacks } from "@/lib/image-fallbacks";
+import { MediaContextualActions } from "@/components/media-contextual-actions";
 
 export function MediaCard({
   item,
@@ -53,8 +56,20 @@ export function MediaCard({
 
   // Adjust image URL parameters based on container type
   const imageUrl = continueWatching
-    ? `${serverUrl}/Items/${imageItemId}/Images/${imageType}?maxHeight=324&maxWidth=576&quality=100`
-    : `${serverUrl}/Items/${imageItemId}/Images/${imageType}?maxHeight=432&maxWidth=288&quality=100`;
+    ? `${serverUrl}/Items/${imageItemId}/Images/${imageType}?maxHeight=432&maxWidth=768&quality=100`
+    : `${serverUrl}/Items/${imageItemId}/Images/${imageType}?maxHeight=576&maxWidth=384&quality=100`;
+
+  // Generate fallback URLs for different image types
+  const fallbackUrls = imageItemId ? generateImageFallbacks(
+    serverUrl,
+    imageItemId,
+    imageType,
+    continueWatching ? 432 : 576,
+    continueWatching ? 768 : 384,
+    100
+  ) : [];
+
+  console.log('MediaCard fallback URLs for', item.Name, ':', fallbackUrls);
 
   // Get blur hash
   const imageTag =
@@ -109,16 +124,26 @@ export function MediaCard({
     }
   };
 
+  const handleContextualPlay = async () => {
+    if (item) {
+      await playMedia({
+        id: item.Id!,
+        name: item.Name!,
+        type: item.Type as "Movie" | "Series" | "Episode",
+        resumePositionTicks: resumePosition || item.UserData?.PlaybackPositionTicks,
+      });
+      setIsPlayerVisible(true);
+    }
+  };
+
   return (
     <div
-      className={`cursor-pointer group overflow-hidden transition select-none ${
-        continueWatching ? "w-72" : fullWidth ? "w-full" : "w-36"
-      }`}
+      className={`cursor-pointer group overflow-hidden transition select-none ${continueWatching ? "w-96" : fullWidth ? "w-full" : "w-48"
+        }`}
     >
       <div
-        className={`relative w-full border rounded-md overflow-hidden active:scale-[0.98] transition ${
-          continueWatching ? "aspect-video" : "aspect-[2/3]"
-        }`}
+        className={`relative w-full border rounded-md overflow-hidden active:scale-[0.98] transition ${continueWatching ? "aspect-video" : "aspect-[2/3]"
+          }`}
       >
         <Link href={linkHref} draggable={false} className="block w-full h-full">
           {serverUrl ? (
@@ -126,9 +151,8 @@ export function MediaCard({
               {/* Blur hash placeholder */}
               {blurDataUrl && !imageLoaded && (
                 <div
-                  className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${
-                    progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
-                  }`}
+                  className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
+                    }`}
                   style={{
                     backgroundImage: `url(${blurDataUrl})`,
                     backgroundSize: "cover",
@@ -138,21 +162,17 @@ export function MediaCard({
                 />
               )}
               {/* Actual image */}
-              <img
-                src={"https://lightspeed.ac/?url=" + imageUrl}
+              <RetryImage
+                src={imageUrl}
                 alt={item.Name || ""}
-                className={`w-full h-full object-cover transition-opacity duration-300 shadow-lg shadow-sm group-hover:shadow-md ${
-                  progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
-                } opacity-100`}
-                onLoad={(e) => {
+                className={`w-full h-full object-cover transition-opacity duration-300 shadow-lg shadow-sm group-hover:shadow-md ${progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
+                  } opacity-100`}
+                fallbackText="No Image"
+                maxRetries={3}
+                retryDelay={1000}
+                fallbackUrls={fallbackUrls}
+                onLoad={() => {
                   setImageLoaded(true);
-                }}
-                draggable={false}
-                ref={(img) => {
-                  // Check if image is already loaded (cached)
-                  if (img && img.complete && img.naturalHeight !== 0) {
-                    setImageLoaded(true);
-                  }
                 }}
               />
             </>
@@ -165,9 +185,8 @@ export function MediaCard({
 
         {/* Play button overlay */}
         <div
-          className={`absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all duration-300 flex items-center justify-center pointer-events-none ${
-            progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
-          }`}
+          className={`absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all duration-300 flex items-center justify-center pointer-events-none ${progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
+            }`}
         >
           <div className="invisible group-hover:visible transition-opacity duration-300 pointer-events-auto">
             <button
@@ -178,6 +197,13 @@ export function MediaCard({
             </button>
           </div>
         </div>
+
+        {/* Contextual Actions */}
+        <MediaContextualActions
+          item={item}
+          serverUrl={serverUrl}
+          onPlay={handleContextualPlay}
+        />
 
         {/* Progress bar overlay at bottom of image */}
         {progressPercentage > 0 && (
@@ -204,8 +230,8 @@ export function MediaCard({
           </div>
           <div className="text-xs text-muted-foreground mt-0.5">
             {item.Type === "Movie" ||
-            item.Type === "Series" ||
-            item.Type === "Season"
+              item.Type === "Series" ||
+              item.Type === "Season"
               ? item.ProductionYear
               : item.SeriesName}
           </div>

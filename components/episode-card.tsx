@@ -6,6 +6,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { Play } from "lucide-react";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
+import { RetryImage } from "@/components/ui/retry-image";
+import { generateImageFallbacks } from "@/lib/image-fallbacks";
 
 export function EpisodeCard({
   item,
@@ -27,6 +29,9 @@ export function EpisodeCard({
   // Use thumbnail image for episodes (16:9 aspect ratio)
   const imageItemId = item.ParentThumbItemId || item.Id;
   const imageUrl = `${serverUrl}/Items/${imageItemId}/Images/Thumb?fillHeight=270&fillWidth=480&quality=50`;
+
+  // Generate fallback URLs for different image types
+  const fallbackUrls = imageItemId ? generateImageFallbacks(serverUrl, imageItemId, "Thumb", 270, 480, 50) : [];
 
   // Calculate progress percentage from resume position
   let progressPercentage = percentageWatched;
@@ -55,16 +60,15 @@ export function EpisodeCard({
       <div className="relative w-full border rounded-md overflow-hidden active:scale-[0.98] transition aspect-video">
         <Link href={linkHref} draggable={false} className="block w-full h-full">
           {serverUrl ? (
-            <img
+            <RetryImage
               src={imageUrl}
-              className={`w-full h-full object-cover transition duration-200 shadow-lg hover:brightness-85 shadow-sm group-hover:shadow-md ${
-                progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
-              }`}
-              onError={(e) => {
-                e.currentTarget.style.display = "none";
-              }}
-              draggable="false"
               alt={item.Name || "Episode"}
+              className={`w-full h-full object-cover transition duration-200 shadow-lg hover:brightness-85 shadow-sm group-hover:shadow-md ${progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
+                }`}
+              fallbackText="No Image"
+              maxRetries={3}
+              retryDelay={1000}
+              fallbackUrls={fallbackUrls}
             />
           ) : (
             <div className="w-full h-full bg-gray-800 flex items-center justify-center rounded-lg shadow-lg">
@@ -75,9 +79,8 @@ export function EpisodeCard({
 
         {/* Play button overlay */}
         <div
-          className={`absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all duration-300 flex items-center justify-center pointer-events-none ${
-            progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
-          }`}
+          className={`absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all duration-300 flex items-center justify-center pointer-events-none ${progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
+            }`}
         >
           <div className="invisible group-hover:visible transition-opacity duration-300 pointer-events-auto">
             <button

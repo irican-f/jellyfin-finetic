@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { MediaCard } from "@/components/media-card";
@@ -15,6 +16,7 @@ interface MediaSectionProps {
   onViewAll?: () => void;
   isLoading?: boolean;
   continueWatching?: boolean;
+  libraryId?: string;
 }
 
 export function MediaSection({
@@ -24,7 +26,9 @@ export function MediaSection({
   onViewAll,
   isLoading = false,
   continueWatching = false,
+  libraryId,
 }: MediaSectionProps) {
+  const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
 
@@ -40,13 +44,23 @@ export function MediaSection({
 
   const scrollLeft = () => {
     if (viewportRef.current) {
-      viewportRef.current.scrollBy({ left: -300, behavior: "smooth" });
+      const scrollAmount = viewportRef.current.clientWidth;
+      viewportRef.current.scrollBy({ left: -scrollAmount, behavior: "smooth" });
     }
   };
 
   const scrollRight = () => {
     if (viewportRef.current) {
-      viewportRef.current.scrollBy({ left: 300, behavior: "smooth" });
+      const scrollAmount = viewportRef.current.clientWidth;
+      viewportRef.current.scrollBy({ left: scrollAmount, behavior: "smooth" });
+    }
+  };
+
+  const handleViewAll = () => {
+    if (onViewAll) {
+      onViewAll();
+    } else if (libraryId) {
+      router.push(`/library/${libraryId}`);
     }
   };
 
@@ -77,7 +91,7 @@ export function MediaSection({
             variant="outline"
             size="sm"
             className="bg-background/10 border-border text-foreground hover:bg-accent"
-            onClick={onViewAll}
+            onClick={handleViewAll}
           >
             View All
           </Button>

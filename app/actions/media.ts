@@ -604,3 +604,46 @@ export async function fetchGenre(genreName: string) {
     return { Items: [], TotalRecordCount: 0, StartIndex: 0 };
   }
 }
+
+export async function fetchRecentlyAddedItems(
+  libraryId: string,
+  limit: number = 12
+): Promise<JellyfinItem[]> {
+  try {
+    const { serverUrl, user } = await getAuthData();
+    const jellyfinInstance = createJellyfinInstance();
+    const api = jellyfinInstance.createApi(serverUrl);
+    api.accessToken = user.AccessToken;
+
+    const { data } = await getItemsApi(api).getItems({
+      userId: user.Id,
+      parentId: libraryId,
+      includeItemTypes: [BaseItemKind.Movie, BaseItemKind.Series],
+      recursive: true,
+      sortBy: [ItemSortBy.DateCreated],
+      sortOrder: [SortOrder.Descending],
+      limit,
+      fields: [
+        ItemFields.CanDelete,
+        ItemFields.PrimaryImageAspectRatio,
+        ItemFields.Overview,
+        ItemFields.DateCreated,
+      ],
+    });
+
+    return data.Items || [];
+  } catch (error) {
+    console.error("Failed to fetch recently added items:", error);
+
+    // If it's an authentication error, throw an error with a special flag
+    if (isAuthError(error)) {
+      const authError = new Error(
+        "Authentication expired. Please sign in again."
+      );
+      (authError as any).isAuthError = true;
+      throw authError;
+    }
+
+    return [];
+  }
+}

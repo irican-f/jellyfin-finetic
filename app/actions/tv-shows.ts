@@ -11,6 +11,8 @@ import { ItemSortBy } from "@jellyfin/sdk/lib/generated-client/models/item-sort-
 import { SortOrder } from "@jellyfin/sdk/lib/generated-client/models/sort-order";
 import { ItemFilter } from "@jellyfin/sdk/lib/generated-client/models/item-filter";
 import { getItemsApi } from "@jellyfin/sdk/lib/utils/api/items-api";
+import { getTvShowsApi } from "@jellyfin/sdk/lib/utils/api/tv-shows-api";
+import { ImageType } from "@jellyfin/sdk/lib/generated-client/models/image-type";
 import { createJellyfinInstance } from "@/lib/utils";
 
 // Type aliases for easier use
@@ -128,7 +130,7 @@ export async function getNextEpisodeForSeries(seriesId: string): Promise<Jellyfi
 
   try {
     const itemsApi = getItemsApi(api);
-    
+
     // Get all episodes for the series with user data
     const { data } = await itemsApi.getItems({
       userId: user.Id,
@@ -150,8 +152,8 @@ export async function getNextEpisodeForSeries(seriesId: string): Promise<Jellyfi
     }
 
     // First, look for episodes with resume positions (partially watched)
-    const resumableEpisodes = data.Items.filter(episode => 
-      episode.UserData?.PlaybackPositionTicks && 
+    const resumableEpisodes = data.Items.filter(episode =>
+      episode.UserData?.PlaybackPositionTicks &&
       episode.UserData.PlaybackPositionTicks > 0 &&
       !episode.UserData.Played
     );
@@ -162,7 +164,7 @@ export async function getNextEpisodeForSeries(seriesId: string): Promise<Jellyfi
     }
 
     // If no resumable episodes, find the first unwatched episode
-    const unwatchedEpisodes = data.Items.filter(episode => 
+    const unwatchedEpisodes = data.Items.filter(episode =>
       !episode.UserData?.Played
     );
 
@@ -175,5 +177,44 @@ export async function getNextEpisodeForSeries(seriesId: string): Promise<Jellyfi
   } catch (error) {
     console.error("Failed to get next episode for series:", error);
     return null;
+  }
+}
+
+export async function fetchNextUpItems(limit: number = 24): Promise<JellyfinItem[]> {
+  try {
+    const { serverUrl, user } = await getAuthData();
+    const jellyfinInstance = createJellyfinInstance();
+    const api = jellyfinInstance.createApi(serverUrl);
+    api.accessToken = user.AccessToken;
+
+    const tvShowsApi = getTvShowsApi(api);
+
+    const { data } = await tvShowsApi.getNextUp({
+      userId: user.Id,
+      limit,
+      fields: [
+        ItemFields.PrimaryImageAspectRatio,
+        ItemFields.DateCreated,
+        ItemFields.Path,
+        ItemFields.MediaSources,
+      ],
+      imageTypeLimit: 1,
+      enableImageTypes: [
+        ImageType.Primary,
+        ImageType.Backdrop,
+        ImageType.Banner,
+        ImageType.Thumb,
+      ],
+      enableTotalRecordCount: false,
+      disableFirstEpisode: false,
+      enableResumable: false,
+      enableRewatching: false,
+      // Remove nextUpDateCutoff to get all shows the user has started watching
+    });
+
+    return data.Items || [];
+  } catch (error) {
+    console.error("Failed to fetch next up items:", error);
+    return [];
   }
 }

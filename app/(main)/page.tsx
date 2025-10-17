@@ -1,4 +1,5 @@
-import { fetchResumeItems, fetchLibraryItems } from "@/app/actions/media";
+import { fetchResumeItems, fetchLibraryItems, fetchRecentlyAddedItems } from "@/app/actions/media";
+import { fetchNextUpItems } from "@/app/actions/tv-shows";
 import { getAuthData, getUserLibraries } from "@/app/actions/utils";
 import { AuthErrorHandler } from "@/app/components/auth-error-handler";
 import { VibrantAuroraBackground } from "@/components/vibrant-aurora-background";
@@ -11,6 +12,7 @@ export default async function Home() {
   let serverUrl = "";
   let user = null;
   let resumeItems: BaseItemDto[] = [];
+  let nextUpItems: BaseItemDto[] = [];
   let libraries: { library: any; items: BaseItemDto[] }[] = [];
   let authError = null;
 
@@ -19,17 +21,19 @@ export default async function Home() {
     serverUrl = authData.serverUrl;
     user = authData.user;
 
-    // Fetch resume items and all user libraries
-    const [resumeItemsResult, userLibraries] = await Promise.all([
+    // Fetch resume items, next up items, and all user libraries
+    const [resumeItemsResult, nextUpItemsResult, userLibraries] = await Promise.all([
       fetchResumeItems(),
+      fetchNextUpItems(24),
       getUserLibraries(),
     ]);
 
     resumeItems = resumeItemsResult;
+    nextUpItems = nextUpItemsResult;
 
-    // Fetch items for each library
+    // Fetch recently added items for each library
     const libraryPromises = userLibraries.map(async (library) => {
-      const { items } = await fetchLibraryItems(library.Id, 12);
+      const items = await fetchRecentlyAddedItems(library.Id, 24);
       return { library, items };
     });
 
@@ -75,12 +79,22 @@ export default async function Home() {
           />
         )}
 
+        {nextUpItems.length > 0 && (
+          <MediaSection
+            sectionName="Next Up"
+            mediaItems={nextUpItems}
+            serverUrl={serverUrl}
+            continueWatching
+          />
+        )}
+
         {libraries.map(({ library, items }) => (
           <MediaSection
             key={library.Id}
-            sectionName={library.Name}
+            sectionName={`Recently Added to ${library.Name}`}
             mediaItems={items}
             serverUrl={serverUrl}
+            libraryId={library.Id}
           />
         ))}
       </div>

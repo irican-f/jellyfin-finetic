@@ -3,6 +3,8 @@
 import React from "react";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
+import { RetryImage } from "@/components/ui/retry-image";
+import { generateImageFallbacks } from "@/lib/image-fallbacks";
 
 interface ContinueWatchingCardProps {
   item: BaseItemDto;
@@ -21,6 +23,9 @@ export function ContinueWatchingCard({ item, serverUrl }: ContinueWatchingCardPr
   // Use backdrop/thumb image for landscape view
   const imageType = "Primary";
   const imageUrl = `${serverUrl}/Items/${item.Id}/Images/${imageType}`;
+
+  // Generate fallback URLs for different image types
+  const fallbackUrls = item.Id ? generateImageFallbacks(serverUrl, item.Id, imageType) : [];
 
   const handlePlayResume = async () => {
     if (item) {
@@ -41,20 +46,21 @@ export function ContinueWatchingCard({ item, serverUrl }: ContinueWatchingCardPr
     >
       <div className="relative w-full aspect-video">
         {serverUrl ? (
-          <img
+          <RetryImage
             src={imageUrl}
-            className="w-full h-full object-cover transition duration-200 shadow-lg hover:brightness-85 rounded-md border shadow-sm group-hover:shadow-md active:scale-[0.98]"
-            onError={(e) => {
-              e.currentTarget.style.display = "none";
-            }}
-            draggable="false"
+            alt={item.Name || "Media item"}
+            className="w-full h-full"
+            fallbackText="No Image"
+            maxRetries={3}
+            retryDelay={1000}
+            fallbackUrls={fallbackUrls}
           />
         ) : (
           <div className="w-full h-full bg-gray-800 flex items-center justify-center rounded-lg shadow-lg">
             <div className="text-white/60 text-sm">No Image</div>
           </div>
         )}
-        
+
         {/* Progress bar overlay at bottom of image */}
         {progressPercentage > 0 && (
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-black/30 backdrop-blur-sm">
@@ -67,7 +73,7 @@ export function ContinueWatchingCard({ item, serverUrl }: ContinueWatchingCardPr
           </div>
         )}
       </div>
-      
+
       <div className="px-1">
         <div className="mt-2.5 text-sm font-medium text-foreground truncate group-hover:underline">
           {item.Name}
