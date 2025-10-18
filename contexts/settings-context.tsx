@@ -42,6 +42,10 @@ interface SettingsContextType {
   setGroqApiKey: (key: string) => void;
   openrouterApiKey: string;
   setOpenrouterApiKey: (key: string) => void;
+  preferredAudioLanguage: string;
+  setPreferredAudioLanguage: (lang: string) => void;
+  preferredSubtitleLanguage: string;
+  setPreferredSubtitleLanguage: (lang: string) => void;
 }
 
 const SettingsContext = createContext<SettingsContextType | undefined>(
@@ -60,11 +64,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [openrouterModel, setOpenrouterModelState] = useState<string>(
     "qwen/qwen3-coder:free"
   );
-  
+
   // API Key states
   const [googleApiKey, setGoogleApiKeyState] = useState<string>("");
   const [groqApiKey, setGroqApiKeyState] = useState<string>("");
   const [openrouterApiKey, setOpenrouterApiKeyState] = useState<string>("");
+  const [preferredAudioLanguage, setPreferredAudioLanguageState] =
+    useState<string>("eng");
+  const [preferredSubtitleLanguage, setPreferredSubtitleLanguageState] =
+    useState<string>("eng");
 
   // Load settings from localStorage on mount
   useEffect(() => {
@@ -130,6 +138,18 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (savedOpenrouterApiKey) {
       setOpenrouterApiKeyState(savedOpenrouterApiKey);
     }
+    const savedAudioLanguage = localStorage.getItem(
+      "finetic-preferred-audio-language",
+    );
+    if (savedAudioLanguage) {
+      setPreferredAudioLanguageState(savedAudioLanguage);
+    }
+    const savedSubtitleLanguage = localStorage.getItem(
+      "finetic-preferred-subtitle-language",
+    );
+    if (savedSubtitleLanguage) {
+      setPreferredSubtitleLanguageState(savedSubtitleLanguage);
+    }
   }, []);
 
   // Save to localStorage when states change
@@ -184,6 +204,16 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem("finetic-openrouter-api-key", key);
   };
 
+  const setPreferredAudioLanguage = (lang: string) => {
+    setPreferredAudioLanguageState(lang);
+    localStorage.setItem("finetic-preferred-audio-language", lang);
+  };
+
+  const setPreferredSubtitleLanguage = (lang: string) => {
+    setPreferredSubtitleLanguageState(lang);
+    localStorage.setItem("finetic-preferred-subtitle-language", lang);
+  };
+
   return (
     <SettingsContext.Provider
       value={{
@@ -207,6 +237,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setGroqApiKey,
         openrouterApiKey,
         setOpenrouterApiKey,
+        preferredAudioLanguage,
+        setPreferredAudioLanguage,
+        preferredSubtitleLanguage,
+        setPreferredSubtitleLanguage,
       }}
     >
       {children}

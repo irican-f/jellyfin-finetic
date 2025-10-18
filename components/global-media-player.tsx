@@ -83,7 +83,8 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         setCurrentTimestamp,
         playMedia,
     } = useMediaPlayer();
-    const { videoBitrate } = useSettings();
+    const { videoBitrate, preferredAudioLanguage, preferredSubtitleLanguage } =
+        useSettings();
 
     const [streamUrl, setStreamUrl] = useState<string | null>(null);
     const [mediaDetails, setMediaDetails] = useState<JellyfinItem | null>(null);
@@ -526,15 +527,31 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 setSelectedVersion(sourceToUse);
 
                 // Set up audio tracks
-                const audioStreams = sourceToUse.MediaStreams?.filter(stream => stream.Type === 'Audio') || [];
+                const audioStreams =
+                    sourceToUse.MediaStreams?.filter(
+                        (stream) => stream.Type === "Audio",
+                    ) || [];
                 console.log("Available audio streams:", audioStreams);
                 setAudioTracks(audioStreams);
 
                 // Find and set the default audio track
-                const defaultAudioTrack = audioStreams.find(stream => stream.IsDefault);
-                const initialAudioTrackIndex = defaultAudioTrack?.Index ?? audioStreams[0]?.Index;
-                setSelectedAudioTrackIndex(initialAudioTrackIndex ?? null);
+                let preferredAudioTrack;
+                if (preferredAudioLanguage === "vo") {
+                    preferredAudioTrack = audioStreams.find((stream) =>
+                        stream.DisplayTitle?.toLowerCase().includes("vo"),
+                    );
+                } else {
+                    preferredAudioTrack = audioStreams.find(
+                        (stream) => stream.Language === preferredAudioLanguage,
+                    );
+                }
 
+                if (!preferredAudioTrack) {
+                    preferredAudioTrack = audioStreams.find((stream) => stream.IsDefault);
+                }
+                const initialAudioTrackIndex =
+                    preferredAudioTrack?.Index ?? audioStreams[0]?.Index;
+                setSelectedAudioTrackIndex(initialAudioTrackIndex ?? null);
 
                 // Update the current media with source information for the AI chat context
                 setCurrentMediaWithSource({
@@ -576,19 +593,58 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
                 const subtitleTracksList = await getSubtitleTracks(
                     currentMedia.id,
-                    sourceToUse.Id!
+                    sourceToUse.Id!,
                 );
-                // Mark all subtitle tracks as inactive initially
-                const tracksWithActiveState = subtitleTracksList.map((track) => ({
+
+                // Prioritize "full" (non-forced) subtitles, then "forced"
+                let preferredSubtitleTrackIndex = -1;
+
+                // 1. Look for a non-forced subtitle in the preferred language
+                const fullSubtitleIndex = subtitleTracksList.findIndex(
+                    (track) =>
+                        track.language === preferredSubtitleLanguage && !track.isForced,
+                );
+
+                if (fullSubtitleIndex !== -1) {
+                    preferredSubtitleTrackIndex = fullSubtitleIndex;
+                } else {
+                    // 2. Fallback to a forced subtitle in the preferred language
+                    const forcedSubtitleIndex = subtitleTracksList.findIndex(
+                        (track) =>
+                            track.language === preferredSubtitleLanguage && track.isForced,
+                    );
+                    if (forcedSubtitleIndex !== -1) {
+                        preferredSubtitleTrackIndex = forcedSubtitleIndex;
+                    }
+                }
+
+                // Mark all subtitle tracks as inactive initially, unless a preferred one is found
+                const tracksWithActiveState = subtitleTracksList.map((track, index) => ({
                     ...track,
                     kind: track.kind as TextTrackKind,
-                    active: false,
+                    active: index === preferredSubtitleTrackIndex,
                 }));
                 setSubtitleTracks(tracksWithActiveState);
 
-                // Don't load any subtitle by default - let user choose
-                setSubtitleData([]);
-                setCurrentSubtitle(null);
+                // If a preferred subtitle is found, load it
+                if (preferredSubtitleTrackIndex !== -1) {
+                    setFetchingSubtitles(true);
+                    getSubtitleContent(
+                        currentMedia.id,
+                        selectedVersion?.Id!,
+                        preferredSubtitleTrackIndex,
+                    ).then((result) => {
+                        setFetchingSubtitles(false);
+                        if (result.success) {
+                            setSubtitleData(result.subtitles);
+                            setCurrentSubtitle(null);
+                        }
+                    });
+                } else {
+                    // Don't load any subtitle by default - let user choose
+                    setSubtitleData([]);
+                    setCurrentSubtitle(null);
+                }
 
                 // Process chapters if available
                 if (details.Chapters && details.Chapters.length > 0) {

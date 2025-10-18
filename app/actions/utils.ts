@@ -179,6 +179,7 @@ export async function getSubtitleTracks(
     language: string;
     src: string;
     default?: boolean;
+    isForced: boolean;
   }>
 > {
   const { serverUrl, user } = await getAuthData();
@@ -210,6 +211,7 @@ export async function getSubtitleTracks(
         language: stream.Language || "unknown",
         src: src,
         default: stream.IsDefault || false,
+        isForced: stream.IsForced || false,
       };
     });
 

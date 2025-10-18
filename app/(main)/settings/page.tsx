@@ -17,12 +17,13 @@ import {
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { useSettings } from "@/contexts/settings-context";
-import { Settings2, Ship, Bot } from "lucide-react";
+import { Settings2, Ship, Bot, Mic, Captions } from "lucide-react";
 import { AuroraBackground } from "@/components/aurora-background";
 import { SearchBar } from "@/components/search-component";
 import { Label } from "@/components/ui/label";
 import { Gemini, Groq, OpenRouter } from "@lobehub/icons";
 import { Ollama } from "@lobehub/icons";
+import { LANGUAGES } from "@/lib/languages";
 
 export default function SettingsPage() {
   const {
@@ -44,19 +45,11 @@ export default function SettingsPage() {
     setGroqApiKey,
     openrouterApiKey,
     setOpenrouterApiKey,
+    preferredAudioLanguage,
+    setPreferredAudioLanguage,
+    preferredSubtitleLanguage,
+    setPreferredSubtitleLanguage,
   } = useSettings();
-
-  console.log({
-    navigatorEnabled,
-    aiProvider,
-    ollamaBaseUrl,
-    ollamaModel,
-    groqModel,
-    openrouterModel,
-    googleApiKey,
-    groqApiKey,
-    openrouterApiKey,
-  });
 
   return (
     <div className="relative px-4 py-6 max-w-full overflow-hidden">
@@ -387,6 +380,78 @@ export default function SettingsPage() {
                   )}
                 </div>
               )}
+            </CardContent>
+          </Card>
+
+          {/* Playback Settings */}
+          <Card className="bg-card/75">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 font-poppins text-lg">
+                <Settings2 className="h-5 w-5" />
+                Playback
+              </CardTitle>
+              <CardDescription>
+                Configure your media playback experience.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="space-y-2">
+                <Label
+                  htmlFor="audio-language"
+                  className="text-base font-medium flex items-center gap-2"
+                >
+                  <Mic className="h-4 w-4" />
+                  Preferred Audio Language
+                </Label>
+                <Select
+                  value={preferredAudioLanguage}
+                  onValueChange={setPreferredAudioLanguage}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LANGUAGES.map((lang) => (
+                      <SelectItem key={lang.value} value={lang.value}>
+                        {lang.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground">
+                  Your preferred audio track will be selected by default if
+                  available.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label
+                  htmlFor="subtitle-language"
+                  className="text-base font-medium flex items-center gap-2"
+                >
+                  <Captions className="h-4 w-4" />
+                  Preferred Subtitle Language
+                </Label>
+                <Select
+                  value={preferredSubtitleLanguage}
+                  onValueChange={setPreferredSubtitleLanguage}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a language" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LANGUAGES.map((lang) => (
+                      <SelectItem key={lang.value} value={lang.value}>
+                        {lang.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-sm text-muted-foreground">
+                  Your preferred subtitle track will be selected by default if
+                  available.
+                </p>
+              </div>
             </CardContent>
           </Card>
         </div>
