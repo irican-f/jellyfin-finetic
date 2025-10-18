@@ -186,6 +186,8 @@ interface MediaPlayerContextValue {
   customSubtitleTracks?: CustomSubtitleTrack[];
   customSubtitlesEnabled: boolean;
   onCustomSubtitleChange?: (track: CustomSubtitleTrack | null) => void;
+  customAudioTracks?: CustomAudioTrack[];
+  onCustomAudioTrackChange?: (track: CustomAudioTrack) => void;
   chapters?: ChapterCue[];
 }
 
@@ -201,10 +203,17 @@ function useMediaPlayerContext(consumerName: string) {
   return context;
 }
 
-interface CustomSubtitleTrack {
+export interface CustomSubtitleTrack {
   label: string;
   language: string;
-  kind: string;
+  kind: TextTrackKind;
+  active: boolean;
+}
+
+export interface CustomAudioTrack {
+  label: string;
+  language?: string;
+  index: number;
   active: boolean;
 }
 
@@ -236,6 +245,8 @@ interface MediaPlayerRootProps
   customSubtitleTracks?: CustomSubtitleTrack[];
   customSubtitlesEnabled?: boolean;
   onCustomSubtitleChange?: (track: CustomSubtitleTrack | null) => void;
+  customAudioTracks?: CustomAudioTrack[];
+  onCustomAudioTrackChange?: (track: CustomAudioTrack) => void;
   chapters?: ChapterCue[];
 }
 
@@ -284,6 +295,8 @@ function MediaPlayerRootImpl(props: MediaPlayerRootProps) {
     customSubtitleTracks,
     customSubtitlesEnabled = false,
     onCustomSubtitleChange,
+    customAudioTracks,
+    onCustomAudioTrackChange,
     chapters,
     children,
     className,
@@ -811,6 +824,8 @@ function MediaPlayerRootImpl(props: MediaPlayerRootProps) {
       customSubtitleTracks,
       customSubtitlesEnabled,
       onCustomSubtitleChange,
+      customAudioTracks,
+      onCustomAudioTrackChange,
       chapters,
     }),
     [
@@ -827,6 +842,8 @@ function MediaPlayerRootImpl(props: MediaPlayerRootProps) {
       customSubtitleTracks,
       customSubtitlesEnabled,
       onCustomSubtitleChange,
+      customAudioTracks,
+      onCustomAudioTrackChange,
       chapters,
     ]
   );
@@ -3214,6 +3231,20 @@ function MediaPlayerSettings(props: MediaPlayerSettingsProps) {
     [store.setState, onOpenChangeProp]
   );
 
+  const onAudioTrackChange = React.useCallback(
+    (track: CustomAudioTrack) => {
+      context.onCustomAudioTrackChange?.(track);
+    },
+    [context.onCustomAudioTrackChange]
+  );
+
+  const selectedAudioTrackLabel = React.useMemo(() => {
+    if (!context.customAudioTracks || context.customAudioTracks.length === 0)
+      return "Default";
+    const activeTrack = context.customAudioTracks.find((t) => t.active);
+    return activeTrack?.label?.split(" ")[0] ?? "Default";
+  }, [context.customAudioTracks]);
+
   return (
     <DropdownMenu
       modal={modal}
@@ -3346,7 +3377,7 @@ function MediaPlayerSettings(props: MediaPlayerSettingsProps) {
                   context.customSubtitleTracks.length > 0
                   ? context.customSubtitleTracks
                     .find((track) => track.active)
-                    ?.label?.split(" ")[0] || "On"
+                    ?.label?.split(":")[0] || "On"
                   : "Off"
                 : selectedSubtitleLabel.split(" ")[0]}
             </Badge>
@@ -3371,7 +3402,7 @@ function MediaPlayerSettings(props: MediaPlayerSettingsProps) {
               ? context.customSubtitleTracks?.map((subtitleTrack) => {
                 return (
                   <DropdownMenuItem
-                    key={`${subtitleTrack.kind}-${subtitleTrack.label}-${subtitleTrack.language}`}
+                    key={subtitleTrack.label}
                     className="justify-between"
                     onSelect={() =>
                       context.onCustomSubtitleChange?.(subtitleTrack)
@@ -3408,6 +3439,30 @@ function MediaPlayerSettings(props: MediaPlayerSettingsProps) {
               )}
           </DropdownMenuSubContent>
         </DropdownMenuSub>
+        {context.customAudioTracks && context.customAudioTracks.length && (
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <span className="flex-1">Audio</span>
+              <Badge variant="outline" className="rounded-sm">
+                {selectedAudioTrackLabel}
+              </Badge>
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent className="max-h-64 overflow-y-auto">
+              {context.customAudioTracks?.map((audioTrack) => {
+                return (
+                  <DropdownMenuItem
+                    key={audioTrack.index}
+                    className="justify-between"
+                    onSelect={() => onAudioTrackChange(audioTrack)}
+                  >
+                    {audioTrack.label}
+                    {audioTrack.active && <CheckIcon />}
+                  </DropdownMenuItem>
+                );
+              })}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );

@@ -6,6 +6,8 @@ import { getUserViewsApi } from "@jellyfin/sdk/lib/utils/api/user-views-api";
 import { createJellyfinInstance } from "@/lib/utils";
 import { getSystemApi } from "@jellyfin/sdk/lib/utils/api/system-api";
 import { LogFile } from "@jellyfin/sdk/lib/generated-client/models";
+import { getOptimalStreamingParams } from "@/lib/device-detection";
+import { MediaSourceInfo } from "@/types/jellyfin";
 
 // Helper function to get auth data from cookies
 export async function getAuthData() {
@@ -63,38 +65,108 @@ export async function getDownloadUrl(itemId: string): Promise<string> {
   return `${serverUrl}/Items/${itemId}/Download?api_key=${user.AccessToken}`;
 }
 
-export async function getStreamUrl(
+async function getDirectPlayUrl(
   itemId: string,
-  mediaSourceId: string,
-  quality?: string,
-  videoBitrate?: number
+  mediaSourceId: string
 ): Promise<string> {
   const { serverUrl, user } = await getAuthData();
+
+  return `${serverUrl}/Videos/${itemId}/stream?api_key=${user.AccessToken}&MediaSourceId=${mediaSourceId}&Static=true`;
+}
+
+async function getHlsUrl(
+  itemId: string,
+  mediaSource: MediaSourceInfo,
+  streamingParams: ReturnType<typeof getOptimalStreamingParams>,
+  audioStreamIndex: number
+): Promise<string> {
+  const { serverUrl, user } = await getAuthData();
+  const {
+    videoCodec,
+    audioCodec,
+    videoBitrate,
+    audioBitrate,
+    audioSampleRate,
+    maxVideoBitrate,
+    transcodingMaxAudioChannels,
+    requireAvc,
+    enableAudioVbrEncoding,
+    hevcLevel,
+    hevcVideoBitDepth,
+    hevcProfile,
+    hevcAudioChannels,
+    aacProfile,
+    av1Profile,
+    av1RangeType,
+    av1Level,
+    vp9RangeType,
+    hevcRangeType,
+    hevcDeinterlace,
+    h264Profile,
+    h264RangeType,
+    h264Level,
+    h264Deinterlace,
+    segmentContainer,
+    minSegments,
+  } = streamingParams;
+
+  const videoStream = mediaSource.MediaStreams?.find(
+    (stream) => stream.Type === "Video"
+  );
 
   // Generate a unique PlaySessionId for each stream request
   const playSessionId = crypto.randomUUID();
 
-  let url = `${serverUrl}/Videos/${itemId}/master.m3u8?api_key=${user.AccessToken}&MediaSourceId=${mediaSourceId}&PlaySessionId=${playSessionId}&VideoCodec=h264,hevc&AudioCodec=aac,mp3&TranscodingProfile=Default`;
+  const params = new URLSearchParams({
+    api_key: user.AccessToken,
+    MediaSourceId: mediaSource.Id!,
+    VideoCodec: videoCodec,
+    AudioCodec: audioCodec,
+    AudioStreamIndex: audioStreamIndex.toString(),
+    VideoBitrate: videoBitrate.toString(),
+    AudioBitrate: audioBitrate.toString(),
+    AudioSampleRate: audioSampleRate.toString(),
+    MaxFramerate: videoStream?.AverageFrameRate?.toString() ?? "23.976",
+    PlaySessionId: playSessionId,
+    TranscodingMaxAudioChannels: transcodingMaxAudioChannels.toString(),
+    RequireAvc: requireAvc.toString(),
+    EnableAudioVbrEncoding: enableAudioVbrEncoding.toString(),
+    SegmentContainer: segmentContainer,
+    MinSegments: minSegments.toString(),
+    BreakOnNonKeyFrames: "True",
+    "hevc-level": hevcLevel.toString(),
+    "hevc-videobitdepth": hevcVideoBitDepth.toString(),
+    "hevc-profile": hevcProfile,
+    "hevc-audiochannels": hevcAudioChannels.toString(),
+    "aac-profile": aacProfile,
+    "av1-profile": av1Profile,
+    "av1-rangetype": av1RangeType,
+    "av1-level": av1Level.toString(),
+    "vp9-rangetype": vp9RangeType,
+    "hevc-rangetype": hevcRangeType,
+    "hevc-deinterlace": hevcDeinterlace.toString(),
+    "h264-profile": h264Profile,
+    "h264-rangetype": h264RangeType,
+    "h264-level": h264Level.toString(),
+    "h264-deinterlace": h264Deinterlace.toString(),
+  });
 
-  // Apply custom bitrate if specified (takes precedence over quality presets)
-  if (videoBitrate && videoBitrate > 0) {
-    url += `&videoBitRate=${videoBitrate}`;
-  } else if (quality) {
-    // Fallback to existing quality presets if no custom bitrate is set
-    switch (quality) {
-      case "2160p":
-        url += "&width=3840&height=2160&videoBitRate=20000000";
-        break;
-      case "1080p":
-        url += "&width=1920&height=1080&videoBitRate=8000000";
-        break;
-      case "720p":
-        url += "&width=1280&height=720&videoBitRate=4000000";
-        break;
-    }
+  return `${serverUrl}/Videos/${itemId}/master.m3u8?${params.toString()}`;
+}
+
+export async function getPlaybackUrl(
+  itemId: string,
+  mediaSource: MediaSourceInfo,
+  directPlay: boolean,
+  streamingParams: ReturnType<typeof getOptimalStreamingParams>,
+  audioStreamIndex: number
+): Promise<string> {
+  if (directPlay) {
+    // Audio track selection during direct play is handled by the client-side player, not the URL.
+    return getDirectPlayUrl(itemId, mediaSource.Id!);
+  } else {
+    return getHlsUrl(itemId, mediaSource, streamingParams, audioStreamIndex);
   }
-
-  return url;
 }
 
 export async function getSubtitleTracks(

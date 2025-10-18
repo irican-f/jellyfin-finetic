@@ -1,7 +1,11 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
-import { JellyfinItem, MediaSourceInfo } from "@/types/jellyfin";
+import {
+    JellyfinItem,
+    MediaSourceInfo,
+    MediaStream,
+} from "@/types/jellyfin";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -22,7 +26,7 @@ import {
     MediaPlayerTooltip,
     MediaPlayerNextEpisode,
     MediaPlayerPreviousEpisode,
-    MediaPlayerEpisodeSelector,
+    MediaPlayerEpisodeSelector, CustomSubtitleTrack,
 } from "@/components/ui/media-player";
 import MuxVideo from "@mux/mux-video-react";
 import {
@@ -35,7 +39,7 @@ import {
 } from "lucide-react";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
 import {
-    getStreamUrl,
+    getPlaybackUrl,
     getSubtitleTracks,
     fetchMediaDetails,
     reportPlaybackStart,
@@ -57,6 +61,8 @@ import {
     detectDevice,
     getDeviceName,
     isHLSSupported,
+    canDirectPlay,
+    getOptimalStreamingParams,
 } from "@/lib/device-detection";
 import { fetchIntroOutro } from "@/app/actions/media";
 import { getNextEpisode, getPreviousEpisode, fetchEpisodesForCurrentSeason } from "@/app/actions";
@@ -81,18 +87,10 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
     const [streamUrl, setStreamUrl] = useState<string | null>(null);
     const [mediaDetails, setMediaDetails] = useState<JellyfinItem | null>(null);
-    const [selectedVersion, setSelectedVersion] =
-        useState<MediaSourceInfo | null>(null);
-    const [subtitleTracks, setSubtitleTracks] = useState<
-        Array<{
-            kind: string;
-            label: string;
-            language: string;
-            src: string;
-            default?: boolean;
-            active: boolean;
-        }>
-    >([]);
+    const [selectedVersion, setSelectedVersion] = useState<MediaSourceInfo | null>(null);
+    const [audioTracks, setAudioTracks] = useState<MediaStream[]>([]);
+    const [selectedAudioTrackIndex, setSelectedAudioTrackIndex] = useState<number | null>(null);
+    const [subtitleTracks, setSubtitleTracks] = useState<CustomSubtitleTrack[]>([]);
     const [loading, setLoading] = useState(false);
     const [videoStarted, setVideoStarted] = useState(false);
     const [fetchingSubtitles, setFetchingSubtitles] = useState(false);
@@ -135,6 +133,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     const progressIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const [currentTime, setCurrentTime] = useState(0);
     const [duration, setDuration] = useState(0);
+    const [seekToTime, setSeekToTime] = useState<number | null>(null);
     const blobUrlsRef = useRef<string[]>([]);
 
     // Episode navigation state
@@ -325,7 +324,11 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         if (videoRef.current) {
             setDuration(videoRef.current.duration);
 
-            if (currentMedia?.resumePositionTicks) {
+            if (seekToTime !== null) {
+                videoRef.current.currentTime = seekToTime;
+                setSeekToTime(null);
+                videoRef.current.play();
+            } else if (currentMedia?.resumePositionTicks) {
                 const resumeTime = ticksToSeconds(currentMedia.resumePositionTicks);
                 videoRef.current.currentTime = resumeTime;
                 setCurrentTime(resumeTime);
@@ -333,7 +336,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 videoRef.current.play();
             }
         }
-    }, [currentMedia]);
+    }, [currentMedia, seekToTime]);
 
     // Helper function to clean up blob URLs
     const cleanupBlobUrls = useCallback(() => {
@@ -369,6 +372,39 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         setBackdropImageLoaded(false); // Reset backdrop image state
         setBlurDataUrl(null); // Reset blur data URL
     }, [stopProgressTracking, cleanupBlobUrls]);
+
+    const updateStreamUrl = async (audioIndex: number) => {
+        if (!currentMedia || !selectedVersion) return;
+
+        const bitrateOption = BITRATE_OPTIONS.find(
+            (option) => option.value === videoBitrate
+        );
+        const bitrate = bitrateOption?.bitrate || 0;
+
+        const directPlay = canDirectPlay(selectedVersion);
+        const streamingParams = getOptimalStreamingParams();
+        if (bitrate > 0) {
+            streamingParams.videoBitrate = bitrate;
+        }
+
+        const newStreamUrl = await getPlaybackUrl(
+            currentMedia.id,
+            selectedVersion,
+            directPlay,
+            streamingParams,
+            audioIndex
+        );
+
+        setStreamUrl(newStreamUrl);
+    };
+
+    const handleAudioTrackChange = (track: { index: number }) => {
+        if (videoRef.current) {
+            setSeekToTime(videoRef.current.currentTime);
+        }
+        setSelectedAudioTrackIndex(track.index);
+        updateStreamUrl(track.index);
+    };
 
     const handleVideoEnded = useCallback(async () => {
         await stopProgressTracking();
@@ -489,6 +525,17 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
                 setSelectedVersion(sourceToUse);
 
+                // Set up audio tracks
+                const audioStreams = sourceToUse.MediaStreams?.filter(stream => stream.Type === 'Audio') || [];
+                console.log("Available audio streams:", audioStreams);
+                setAudioTracks(audioStreams);
+
+                // Find and set the default audio track
+                const defaultAudioTrack = audioStreams.find(stream => stream.IsDefault);
+                const initialAudioTrackIndex = defaultAudioTrack?.Index ?? audioStreams[0]?.Index;
+                setSelectedAudioTrackIndex(initialAudioTrackIndex ?? null);
+
+
                 // Update the current media with source information for the AI chat context
                 setCurrentMediaWithSource({
                     id: currentMedia.id,
@@ -502,15 +549,31 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                     (option) => option.value === videoBitrate
                 );
                 const bitrate = bitrateOption?.bitrate || 0; // 0 means auto/no limit
-                const streamUrl = await getStreamUrl(
+
+                const directPlay = canDirectPlay(sourceToUse);
+                console.log(`Direct play supported: ${directPlay}`);
+
+                const streamingParams = getOptimalStreamingParams();
+                // Override bitrate if user has set one
+                if (bitrate > 0) {
+                    streamingParams.videoBitrate = bitrate;
+                }
+
+                if (initialAudioTrackIndex === undefined || initialAudioTrackIndex === null) {
+                    console.error("No audio track found for this media.");
+                    // Handle the error appropriately, maybe show a message to the user
+                    return;
+                }
+
+                const streamUrl = await getPlaybackUrl(
                     currentMedia.id,
-                    sourceToUse.Id!,
-                    undefined,
-                    bitrate
+                    sourceToUse,
+                    directPlay,
+                    streamingParams,
+                    initialAudioTrackIndex
                 );
                 setStreamUrl(streamUrl);
 
-                // Start fetching subtitle data asynchronously without blocking playback
                 const subtitleTracksList = await getSubtitleTracks(
                     currentMedia.id,
                     sourceToUse.Id!
@@ -518,6 +581,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 // Mark all subtitle tracks as inactive initially
                 const tracksWithActiveState = subtitleTracksList.map((track) => ({
                     ...track,
+                    kind: track.kind as TextTrackKind,
                     active: false,
                 }));
                 setSubtitleTracks(tracksWithActiveState);
@@ -698,6 +762,13 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         return null;
     }
 
+    const customAudioTracks = audioTracks.map(track => ({
+        label: track.DisplayTitle || track.Language || `Track ${track.Index}`,
+        language: track.Language ?? undefined,
+        index: track.Index!,
+        active: track.Index === selectedAudioTrackIndex
+    }));
+
     return (
         <div className="fixed inset-0 z-[999999] bg-black flex items-center justify-center w-screen">
             <MediaPlayer
@@ -707,6 +778,8 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                     console.warn("Media player error caught:", error);
                 }}
                 className="w-screen"
+                customAudioTracks={customAudioTracks}
+                onCustomAudioTrackChange={handleAudioTrackChange}
                 customSubtitleTracks={subtitleTracks}
                 customSubtitlesEnabled={subtitleTracks.length > 0}
                 chapters={chapters}
@@ -755,9 +828,6 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                             // @ts-ignore
                             ref={videoRef}
                             src={streamUrl}
-                            // src={
-                            //   "https://stream.mux.com/A3VXy02VoUinw01pwyomEO3bHnG4P32xzV7u1j1FSzjNg.m3u8"
-                            // }
                             crossOrigin=""
                             playsInline
                             preload="auto"

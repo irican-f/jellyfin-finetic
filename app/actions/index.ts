@@ -50,7 +50,7 @@ export {
 export {
   getImageUrl,
   getDownloadUrl,
-  getStreamUrl,
+  getPlaybackUrl,
   getSubtitleTracks,
   getUserLibraries,
   getLibraryById,

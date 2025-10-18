@@ -3,6 +3,8 @@
  * based on device capabilities and limitations
  */
 
+import { MediaSourceInfo } from "@/types/jellyfin";
+
 export interface DeviceInfo {
   isIOS: boolean;
   isIPad: boolean;
@@ -83,7 +85,7 @@ export function detectDevice(): DeviceInfo {
   if (isIOS) {
     // iOS prefers H.264, limit bitrates for battery life
     maxBitrate = Math.min(maxBitrate, 8000000); // Cap at 8Mbps for iOS
-    
+
     if (isIPhone) {
       recommendedBitrate = 2000000; // 2Mbps for iPhone
       maxBitrate = 4000000; // 4Mbps max for iPhone
@@ -121,10 +123,28 @@ export function getOptimalStreamingParams(deviceInfo?: DeviceInfo): {
   segmentContainer: string;
   minSegments: number;
   forceTranscode: boolean;
+  transcodingMaxAudioChannels: number;
+  requireAvc: boolean;
+  enableAudioVbrEncoding: boolean;
+  hevcLevel: number;
+  hevcVideoBitDepth: number;
+  hevcProfile: string;
+  hevcAudioChannels: number;
+  aacProfile: string;
+  av1Profile: string;
+  av1RangeType: string;
+  av1Level: number;
+  vp9RangeType: string;
+  hevcRangeType: string;
+  hevcDeinterlace: boolean;
+  h264Profile: string;
+  h264RangeType: string;
+  h264Level: number;
+  h264Deinterlace: boolean;
 } {
   const device = deviceInfo || detectDevice();
 
-  let videoCodec = 'h264'; // Default to H.264 for maximum compatibility
+  let videoCodec = "h264"; // Default to H.264 for maximum compatibility
   let profile = 'high';
   let level = '4.1';
 
@@ -145,8 +165,8 @@ export function getOptimalStreamingParams(deviceInfo?: DeviceInfo): {
 
   return {
     videoCodec,
-    audioCodec: 'aac', // AAC is universally supported
-    container: 'ts', // MPEG-TS for HLS
+    audioCodec: "aac", // AAC is universally supported
+    container: "ts", // MPEG-TS for HLS
     profile,
     level,
     videoBitrate: device.recommendedBitrate,
@@ -154,9 +174,27 @@ export function getOptimalStreamingParams(deviceInfo?: DeviceInfo): {
     audioBitrate: device.isMobile ? 128000 : 256000, // Lower audio bitrate on mobile
     audioSampleRate: 48000, // 48kHz is standard
     audioChannels: 2, // Stereo
-    segmentContainer: 'ts',
-    minSegments: device.isMobile ? 2 : 3, // Fewer segments for mobile for faster startup
-    forceTranscode: device.isIOS || device.isAndroid, // Force transcoding on mobile for consistency
+    segmentContainer: "mp4", // Use MP4 segments for broader compatibility
+    minSegments: device.isMobile ? 2 : 1, // Fewer segments for mobile for faster startup
+    forceTranscode: false, // Let the server decide based on capabilities
+    transcodingMaxAudioChannels: 2,
+    requireAvc: false,
+    enableAudioVbrEncoding: true,
+    hevcLevel: 120,
+    hevcVideoBitDepth: 8,
+    hevcProfile: "main",
+    hevcAudioChannels: 2,
+    aacProfile: "lc",
+    av1Profile: "main",
+    av1RangeType: "SDR,HDR10,HLG",
+    av1Level: 19,
+    vp9RangeType: "SDR,HDR10,HLG",
+    hevcRangeType: "SDR,HDR10,HLG",
+    hevcDeinterlace: true,
+    h264Profile: "high,main,baseline,constrainedbaseline,high10",
+    h264RangeType: "SDR",
+    h264Level: 52,
+    h264Deinterlace: true,
   };
 }
 
@@ -164,11 +202,72 @@ export function getOptimalStreamingParams(deviceInfo?: DeviceInfo): {
  * Checks if HLS is supported on the current device
  */
 export function isHLSSupported(): boolean {
-  if (typeof window === 'undefined') return false;
-  
-  const video = document.createElement('video');
-  return video.canPlayType('application/vnd.apple.mpegurl') !== '' ||
-         video.canPlayType('application/x-mpegURL') !== '';
+  if (typeof window === "undefined") return false;
+
+  const video = document.createElement("video");
+  return (
+    video.canPlayType("application/vnd.apple.mpegurl") !== "" ||
+    video.canPlayType("application/x-mpegURL") !== ""
+  );
+}
+
+/**
+ * Checks if a media source can be direct played.
+ * @param mediaSource The media source info from Jellyfin.
+ * @returns True if the media can be direct played, false otherwise.
+ */
+export function canDirectPlay(mediaSource: MediaSourceInfo): boolean {
+  if (typeof window === "undefined") {
+    // Assume no direct play on server
+    return false;
+  }
+
+  const video = document.createElement("video");
+
+  if (!mediaSource.MediaStreams) {
+    return false;
+  }
+
+  const videoStream = mediaSource.MediaStreams.find(
+    (stream) => stream.Type === "Video"
+  );
+  const audioStream = mediaSource.MediaStreams.find(
+    (stream) => stream.Type === "Audio"
+  );
+
+  if (!videoStream || !audioStream) {
+    // Cannot direct play without video or audio
+    return false;
+  }
+
+  const container = mediaSource.Container?.toLowerCase();
+  let mimeType = "";
+
+  switch (container) {
+    case "mkv":
+    case "webm":
+      mimeType = "video/webm";
+      break;
+    case "mp4":
+      mimeType = "video/mp4";
+      break;
+    default:
+      // Assume other containers are not supported for direct play for now
+      return false;
+  }
+
+  // Basic container check
+  if (video.canPlayType(mimeType) === "") {
+    return false;
+  }
+
+  // Check with codecs
+  const codecs = [videoStream.Codec, audioStream.Codec]
+    .filter(Boolean)
+    .join(",");
+  const fullMimeType = `${mimeType}; codecs="${codecs}"`;
+
+  return video.canPlayType(fullMimeType) !== "";
 }
 
 /**
@@ -176,7 +275,7 @@ export function isHLSSupported(): boolean {
  */
 export function getDeviceName(deviceInfo?: DeviceInfo): string {
   const device = deviceInfo || detectDevice();
-  
+
   if (device.isIPhone) return 'iPhone';
   if (device.isIPad) return 'iPad';
   if (device.isIOS) return 'iOS Device';
@@ -185,6 +284,6 @@ export function getDeviceName(deviceInfo?: DeviceInfo): string {
   if (device.isDesktop) return 'Desktop';
   if (device.isTablet) return 'Tablet';
   if (device.isMobile) return 'Mobile Device';
-  
+
   return 'Unknown Device';
 }
