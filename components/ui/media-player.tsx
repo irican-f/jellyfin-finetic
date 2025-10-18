@@ -3377,7 +3377,7 @@ function MediaPlayerSettings(props: MediaPlayerSettingsProps) {
                   context.customSubtitleTracks.length > 0
                   ? context.customSubtitleTracks
                     .find((track) => track.active)
-                    ?.label?.split(":")[0] || "On"
+                    ?.label?.split(":")[0] || "Off"
                   : "Off"
                 : selectedSubtitleLabel.split(" ")[0]}
             </Badge>

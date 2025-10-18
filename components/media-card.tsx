@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models";
@@ -8,11 +8,19 @@ import { Play, Eye, EyeOff } from "lucide-react";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
 import { markItemAsPlayed, markItemAsUnplayed } from "@/app/actions/playback";
 import { toast } from "sonner";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import DOMPurify from "dompurify";
+import parse from "html-react-parser";
 
 import { decode } from "blurhash";
 import { RetryImage } from "@/components/ui/retry-image";
 import { generateImageFallbacks } from "@/lib/image-fallbacks";
 import { MediaContextualActions } from "@/components/media-contextual-actions";
+import { Badge } from "./ui/badge";
 
 export function MediaCard({
   item,
@@ -22,6 +30,8 @@ export function MediaCard({
   showProgress = false,
   resumePosition,
   fullWidth = false,
+  libraryName,
+  popoverEnabled = true,
 }: {
   item: BaseItemDto;
   serverUrl: string;
@@ -30,8 +40,12 @@ export function MediaCard({
   showProgress?: boolean;
   resumePosition?: number;
   fullWidth?: boolean;
+  libraryName?: string;
+  popoverEnabled?: boolean;
 }) {
   const { playMedia, setIsPlayerVisible } = useMediaPlayer();
+  const [isPopoverOpen, setPopoverOpen] = useState(false);
+  const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   let linkHref = "";
   if (item.Type === "Movie") {
@@ -168,16 +182,30 @@ export function MediaCard({
     }
   };
 
-  return (
-    <div
-      className={`cursor-pointer group overflow-hidden transition select-none ${continueWatching ? "w-96" : fullWidth ? "w-full" : "w-48"
-        }`}
-    >
+  const handleMouseEnter = () => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      setPopoverOpen(true);
+    }, 300);
+  };
+
+  const handleMouseLeave = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+    }
+    setPopoverOpen(false);
+  };
+
+  const cardInnerJsx = (
+    <>
       <div
         className={`relative w-full border rounded-md overflow-hidden active:scale-[0.98] transition ${continueWatching ? "aspect-video" : "aspect-[2/3]"
           }`}
       >
-        <Link href={linkHref} draggable={false} className="block w-full h-full">
+        <Link
+          href={linkHref}
+          draggable={false}
+          className="block w-full h-full"
+        >
           {serverUrl ? (
             <>
               {/* Blur hash placeholder */}
@@ -295,6 +323,54 @@ export function MediaCard({
           </div>
         </div>
       </Link>
-    </div>
+    </>
+  );
+
+  if (!popoverEnabled) {
+    return (
+      <div
+        className={`cursor-pointer group overflow-hidden transition select-none ${continueWatching ? "w-96" : fullWidth ? "w-full" : "w-48"
+          }`}
+      >
+        {cardInnerJsx}
+      </div>
+    );
+  }
+
+  return (
+    <Popover open={isPopoverOpen} onOpenChange={setPopoverOpen}>
+      <PopoverTrigger asChild>
+        <div
+          onMouseEnter={handleMouseEnter}
+          onMouseLeave={handleMouseLeave}
+          className={`cursor-pointer group overflow-hidden transition select-none ${continueWatching ? "w-96" : fullWidth ? "w-full" : "w-48"
+            }`}
+        >
+          {cardInnerJsx}
+        </div>
+      </PopoverTrigger>
+      <PopoverContent className="w-80" side="right">
+        <div className="grid gap-4">
+          <div className="space-y-2">
+            {libraryName && <Badge>{libraryName}</Badge>}
+            <h4 className="font-medium leading-none">{item.Name}</h4>
+            {item.Genres && item.Genres.length > 0 && (
+              <p className="text-sm text-muted-foreground">
+                Genres: {item.Genres.join(", ")}
+              </p>
+            )}
+          </div>
+          {item.Overview && (
+            <div className="grid gap-2">
+              <div className="grid grid-cols-3 items-center gap-4">
+                <div className="text-sm text-muted-foreground col-span-3">
+                  {parse(DOMPurify.sanitize(item.Overview))}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
   );
 }

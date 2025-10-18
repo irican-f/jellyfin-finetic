@@ -85,6 +85,7 @@ export default async function Home() {
             mediaItems={nextUpItems}
             serverUrl={serverUrl}
             continueWatching
+            popoverEnabled={false}
           />
         )}
 
@@ -95,6 +96,7 @@ export default async function Home() {
             mediaItems={items}
             serverUrl={serverUrl}
             libraryId={library.Id}
+            libraryName={library.Name}
           />
         ))}
       </div>

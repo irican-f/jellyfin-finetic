@@ -17,6 +17,8 @@ interface MediaSectionProps {
   isLoading?: boolean;
   continueWatching?: boolean;
   libraryId?: string;
+  libraryName?: string;
+  popoverEnabled?: boolean;
 }
 
 export function MediaSection({
@@ -27,6 +29,8 @@ export function MediaSection({
   isLoading = false,
   continueWatching = false,
   libraryId,
+  libraryName,
+  popoverEnabled = true,
 }: MediaSectionProps) {
   const router = useRouter();
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -107,6 +111,8 @@ export function MediaSection({
                   serverUrl={serverUrl}
                   percentageWatched={item.UserData?.PlayedPercentage || 0}
                   continueWatching={continueWatching}
+                  libraryName={libraryName}
+                  popoverEnabled={popoverEnabled}
                 />
               </div>
             ))}
