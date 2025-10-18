@@ -3616,4 +3616,6 @@ export {
   //
   useMediaSelector as useMediaPlayer,
   useStoreSelector as useMediaPlayerStore,
+  useMediaDispatch,
+  MediaActionTypes,
 };

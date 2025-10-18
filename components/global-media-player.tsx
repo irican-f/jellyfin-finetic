@@ -26,7 +26,8 @@ import {
     MediaPlayerTooltip,
     MediaPlayerNextEpisode,
     MediaPlayerPreviousEpisode,
-    MediaPlayerEpisodeSelector, CustomSubtitleTrack,
+    MediaPlayerEpisodeSelector,
+    CustomSubtitleTrack,
 } from "@/components/ui/media-player";
 import MuxVideo from "@mux/mux-video-react";
 import {
@@ -67,7 +68,6 @@ import {
 import { fetchIntroOutro } from "@/app/actions/media";
 import { getNextEpisode, getPreviousEpisode, fetchEpisodesForCurrentSeason } from "@/app/actions";
 import { decode } from "blurhash";
-import { playMedia } from "@/app/tools";
 
 interface GlobalMediaPlayerProps {
     onToggleAIAsk?: () => void;
@@ -111,6 +111,8 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             text: string;
         }>
     >([]);
+    const [preferredSubtitleToLoad, setPreferredSubtitleToLoad] =
+        useState<CustomSubtitleTrack | null>(null);
 
     // Chapter state
     const [chapters, setChapters] = useState<
@@ -136,6 +138,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     const [duration, setDuration] = useState(0);
     const [seekToTime, setSeekToTime] = useState<number | null>(null);
     const blobUrlsRef = useRef<string[]>([]);
+
 
     // Episode navigation state
     const [nextEpisode, setNextEpisode] = useState<JellyfinItem | null>(null);
@@ -406,6 +409,45 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         updateStreamUrl(track.index);
     };
 
+    const selectSubtitleTrack = useCallback(
+        (subtitleTrack: CustomSubtitleTrack | null) => {
+            console.log("==== Selecting subtitle track:", subtitleTrack);
+
+            if (!subtitleTrack) {
+                // Turn off subtitles
+                setSubtitleData([]);
+                setCurrentSubtitle(null);
+                setSubtitleTracks((prev) =>
+                    prev.map((track) => ({ ...track, active: false })),
+                );
+                return;
+            }
+
+            const trackIndex = subtitleTracks.findIndex(
+                (track) => track.label === subtitleTrack.label,
+            );
+            if (trackIndex !== -1 && currentMedia && selectedVersion) {
+                setFetchingSubtitles(true);
+                getSubtitleContent(currentMedia.id, selectedVersion.Id!, trackIndex).then(
+                    (result) => {
+                        setFetchingSubtitles(false);
+                        if (result.success) {
+                            setSubtitleData(result.subtitles);
+                            setCurrentSubtitle(null); // Reset current subtitle to show from data
+                            setSubtitleTracks((prev) =>
+                                prev.map((track, idx) => ({
+                                    ...track,
+                                    active: idx === trackIndex,
+                                })),
+                            );
+                        }
+                    },
+                );
+            }
+        },
+        [currentMedia, selectedVersion, subtitleTracks],
+    );
+
     const handleVideoEnded = useCallback(async () => {
         await stopProgressTracking();
         handleClose();
@@ -415,10 +457,20 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     const processSubtitleText = useCallback((text: string) => {
         // Check if subtitle should be positioned at top (an8)
         const shouldPositionTop = /\{\\an8\}/.test(text);
-        // Remove ASS/SSA positioning tags like {\an8}
-        let processedText = text.replace(/\{\\an\d+\}/g, "");
+
+        // Remove all ASS/SSA positioning and style tags like {\an8}, {\pos(192,217)}, etc.
+        let processedText = text.replace(/\{[^}]+\}/g, (match) => {
+            if (match === "{\\i1}") return "<i>";
+            if (match === "{\\i0}") return "</i>";
+            if (match === "{\\b1}") return "<b>";
+            if (match === "{\\b0}") return "</b>";
+            if (match === "{\\u1}") return "<u>";
+            if (match === "{\\u0}" || match === "{\\u0}") return "</u>";
+            return ""; // Remove other unhandled tags
+        });
+
         // Convert \n to <br> tags for line breaks
-        processedText = processedText.replace(/\n/g, "<br>");
+        processedText = processedText.replace(/\\n/gi, "<br>");
 
         return {
             text: processedText,
@@ -452,6 +504,13 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         },
         [subtitleData, processSubtitleText]
     );
+
+    useEffect(() => {
+        if (preferredSubtitleToLoad) {
+            selectSubtitleTrack(preferredSubtitleToLoad);
+            setPreferredSubtitleToLoad(null); // Reset after loading
+        }
+    }, [preferredSubtitleToLoad, selectSubtitleTrack]);
 
     useEffect(() => {
         if (currentMedia && isPlayerVisible) {
@@ -627,18 +686,9 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
                 // If a preferred subtitle is found, load it
                 if (preferredSubtitleTrackIndex !== -1) {
-                    setFetchingSubtitles(true);
-                    getSubtitleContent(
-                        currentMedia.id,
-                        selectedVersion?.Id!,
-                        preferredSubtitleTrackIndex,
-                    ).then((result) => {
-                        setFetchingSubtitles(false);
-                        if (result.success) {
-                            setSubtitleData(result.subtitles);
-                            setCurrentSubtitle(null);
-                        }
-                    });
+                    const preferredTrack =
+                        tracksWithActiveState[preferredSubtitleTrackIndex];
+                    setPreferredSubtitleToLoad(preferredTrack);
                 } else {
                     // Don't load any subtitle by default - let user choose
                     setSubtitleData([]);
@@ -835,43 +885,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 customSubtitleTracks={subtitleTracks}
                 customSubtitlesEnabled={subtitleTracks.length > 0}
                 chapters={chapters}
-                onCustomSubtitleChange={(subtitleTrack) => {
-                    if (!subtitleTrack) {
-                        // Turn off subtitles
-                        setSubtitleData([]);
-                        setCurrentSubtitle(null);
-                        // Update all tracks to inactive
-                        setSubtitleTracks((prev) =>
-                            prev.map((track) => ({ ...track, active: false }))
-                        );
-                        return;
-                    }
-
-                    const trackIndex = subtitleTracks.findIndex(
-                        (track) => track.label === subtitleTrack.label
-                    );
-                    if (trackIndex !== -1) {
-                        setFetchingSubtitles(true);
-                        getSubtitleContent(
-                            currentMedia.id,
-                            selectedVersion?.Id!,
-                            trackIndex
-                        ).then((result) => {
-                            setFetchingSubtitles(false);
-                            if (result.success) {
-                                setSubtitleData(result.subtitles);
-                                setCurrentSubtitle(null); // Reset current subtitle to show from data
-                                // Update track states - mark selected as active, others as inactive
-                                setSubtitleTracks((prev) =>
-                                    prev.map((track, idx) => ({
-                                        ...track,
-                                        active: idx === trackIndex,
-                                    }))
-                                );
-                            }
-                        });
-                    }
-                }}
+                onCustomSubtitleChange={selectSubtitleTrack}
             >
                 {/* Always render the video component so it can load in the background */}
                 {streamUrl && mediaDetails && (
