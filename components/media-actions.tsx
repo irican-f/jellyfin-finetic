@@ -22,8 +22,6 @@ import { ImageEditorDialog } from "@/components/image-editor-dialog";
 import { Info, Download, Play, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import {
   getDownloadUrl,
-  getStreamUrl,
-  getSubtitleTracks,
   getUserWithPolicy,
   getUser,
   type UserPolicy,
@@ -31,7 +29,6 @@ import {
 import {
   getMediaDetailsFromName,
   cutOffText,
-  formatPlaybackPosition,
   formatRuntime,
 } from "@/lib/utils";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";

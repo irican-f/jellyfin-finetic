@@ -143,7 +143,6 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
     // Episode selector state
     const [seasonEpisodes, setSeasonEpisodes] = useState<JellyfinItem[]>([]);
-    const [isEpisodeSelectorOpen, setIsEpisodeSelectorOpen] = useState(false);
 
     // Helper function to convert seconds to Jellyfin ticks (1 tick = 100 nanoseconds)
     const secondsToTicks = (seconds: number) => Math.floor(seconds * 10000000);
@@ -779,9 +778,6 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     const handleEpisodeSelect = useCallback(async (episode: JellyfinItem) => {
         if (!episode || !episode.Id) return;
 
-        // Close the popover
-        setIsEpisodeSelectorOpen(false);
-
         // Don't reload if it's the same episode
         if (episode.Id === currentMedia?.id) return;
 
@@ -1198,20 +1194,6 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                                 onNextEpisode={handleNextEpisode}
                                 className="text-white hover:bg-white/20"
                             />
-                            {/* Episode Selector Button */}
-                            {seasonEpisodes.length > 0 && (
-                                <MediaPlayerEpisodeSelector
-                                    episodes={seasonEpisodes}
-                                    currentEpisodeId={currentMedia?.id}
-                                    onEpisodeSelect={handleEpisodeSelect}
-                                    seriesName={mediaDetails?.SeriesName || undefined}
-                                    seasonNumber={mediaDetails?.ParentIndexNumber || undefined}
-                                    onClick={() => setIsEpisodeSelectorOpen(!isEpisodeSelectorOpen)}
-                                    open={isEpisodeSelectorOpen}
-                                    onOpenChange={setIsEpisodeSelectorOpen}
-                                    className="text-white hover:bg-white/20"
-                                />
-                            )}
                             <MediaPlayerTime />
                         </div>
                         <div className="flex items-center gap-2">
@@ -1294,6 +1276,14 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                                     </PopoverContent>
                                 </Popover>
                             )}
+                            <MediaPlayerEpisodeSelector
+                                episodes={seasonEpisodes}
+                                currentEpisodeId={currentMedia?.id}
+                                onEpisodeSelect={handleEpisodeSelect}
+                                seriesName={mediaDetails?.SeriesName || undefined}
+                                seasonNumber={mediaDetails?.ParentIndexNumber || undefined}
+                                className="text-white hover:bg-white/20"
+                            />
                             <MediaPlayerSettings />
                             <MediaPlayerPiP />
                             <MediaPlayerFullscreen />

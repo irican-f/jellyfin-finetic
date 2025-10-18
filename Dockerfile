@@ -1,6 +1,6 @@
 # Multi-stage build for Finetic
 # Stage 1: Dependencies and build
-FROM node:18-alpine AS builder
+FROM node:20-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -10,7 +10,7 @@ COPY package*.json ./
 COPY bun.lock* ./
 
 # Install dependencies
-RUN npm ci --only=production --ignore-scripts
+RUN npm ci --ignore-scripts
 
 # Copy source code
 COPY . .
@@ -19,7 +19,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production image
-FROM node:18-alpine AS runner
+FROM node:20-alpine AS runner
 
 WORKDIR /app
 

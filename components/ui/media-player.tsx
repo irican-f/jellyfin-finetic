@@ -13,6 +13,11 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
@@ -45,6 +50,8 @@ import {
   Volume1Icon,
   Volume2Icon,
   VolumeXIcon,
+  Eye,
+  EyeIcon,
 } from "lucide-react";
 import {
   MediaActionTypes,
@@ -2974,14 +2981,13 @@ function MediaPlayerPreviousEpisode(props: MediaPlayerPreviousEpisodeProps) {
   );
 }
 
-interface MediaPlayerEpisodeSelectorProps extends React.ComponentProps<typeof Button> {
+interface MediaPlayerEpisodeSelectorProps
+  extends Omit<React.ComponentProps<"button">, "onSelect"> {
   episodes?: JellyfinItem[];
   currentEpisodeId?: string;
-  onEpisodeSelect?: (episode: any) => void;
+  onEpisodeSelect?: (episode: JellyfinItem) => void;
   seriesName?: string;
   seasonNumber?: number;
-  open?: boolean;
-  onOpenChange?: (open: boolean) => void;
 }
 
 function MediaPlayerEpisodeSelector(props: MediaPlayerEpisodeSelectorProps) {
@@ -2994,13 +3000,11 @@ function MediaPlayerEpisodeSelector(props: MediaPlayerEpisodeSelectorProps) {
     onEpisodeSelect,
     seriesName,
     seasonNumber,
-    open,
-    onOpenChange,
-    onClick,
     ...episodeSelectorProps
   } = props;
 
   const context = useMediaPlayerContext("MediaPlayerEpisodeSelector");
+  const store = useStoreContext("MediaPlayerEpisodeSelector");
   const isDisabled = disabled || context.disabled || !episodes || episodes.length === 0;
 
   const formatRuntime = (runTimeTicks: number) => {
@@ -3014,12 +3018,21 @@ function MediaPlayerEpisodeSelector(props: MediaPlayerEpisodeSelectorProps) {
     return `${minutes}m`;
   };
 
+  const onOpenChangeCallback = React.useCallback(
+    (open: boolean) => {
+      store.setState("menuOpen", open);
+    },
+    [store.setState]
+  );
+
   if (!episodes || episodes.length === 0) return null;
 
   return (
-    <DropdownMenu open={open} onOpenChange={onOpenChange}>
-      <DropdownMenuTrigger asChild>
-        <MediaPlayerTooltip tooltip="Episode Selector" shortcut="E">
+    <DropdownMenu
+      onOpenChange={onOpenChangeCallback}
+    >
+      <MediaPlayerTooltip tooltip="Episode Selector" shortcut="E">
+        <DropdownMenuTrigger asChild>
           <Button
             type="button"
             aria-controls={context.mediaId}
@@ -3027,66 +3040,63 @@ function MediaPlayerEpisodeSelector(props: MediaPlayerEpisodeSelectorProps) {
             data-disabled={isDisabled ? "" : undefined}
             data-slot="media-player-episode-selector"
             disabled={isDisabled}
-            onClick={(e) => onClick?.(e)}
             {...episodeSelectorProps}
             variant="ghost"
             size="icon"
-            className={cn("size-8", className)}
+            className={cn(
+              "size-8 aria-[expanded=true]:bg-accent/50",
+              className
+            )}
           >
             {children ?? <ListIcon />}
           </Button>
-        </MediaPlayerTooltip>
-      </DropdownMenuTrigger>
+        </DropdownMenuTrigger>
+      </MediaPlayerTooltip>
       <DropdownMenuContent
-        className="w-96 bg-black/95 border-white/20 text-white z-[1000000] max-h-96 overflow-hidden"
+        align="end"
         side="top"
-        align="center"
-        sideOffset={10}
-        avoidCollisions={true}
-        collisionPadding={20}
+        container={context.portalContainer}
+        className="w-96 bg-black/95 border-white/20 text-white z-[1000000] max-h-96 overflow-y-auto p-2 data-[side=top]:mb-3.5"
       >
-        <div className="space-y-3">
-          <h3 className="font-semibold text-lg">
-            {seriesName} - Season {seasonNumber}
-          </h3>
-          <div className="max-h-80 overflow-y-auto space-y-2">
-            {episodes.map((episode) => {
-              const isCurrentEpisode = episode.Id === currentEpisodeId;
-              const isWatched = episode.UserData?.Played;
-              const progress = episode.UserData?.PlayedPercentage || 0;
+        <DropdownMenuLabel className="font-semibold text-lg">
+          {seriesName} - Season {seasonNumber}
+        </DropdownMenuLabel>
+        <div className="space-y-2">
+          {episodes.map((episode) => {
+            const isCurrentEpisode = episode.Id === currentEpisodeId;
+            const isWatched = episode.UserData?.Played;
+            const progress = episode.UserData?.PlayedPercentage || 0;
 
-              return (
-                <div
-                  key={episode.Id}
-                  className={`group relative rounded-lg overflow-hidden cursor-pointer transition-all p-3 ${isCurrentEpisode
-                    ? 'bg-white/20 ring-1 ring-white/40'
-                    : 'hover:bg-white/10'
-                    }`}
-                  onClick={() => onEpisodeSelect?.(episode)}
-                >
+            return (
+              <DropdownMenuItem
+                key={episode.Id}
+                className={cn(
+                  "p-0 focus:bg-white/10 rounded-lg h-auto",
+                  isCurrentEpisode && "bg-white/20 ring-1 ring-white/40"
+                )}
+                onSelect={() => onEpisodeSelect?.(episode)}
+              >
+                <div className="relative overflow-hidden w-full cursor-pointer transition-all p-3">
                   <div className="flex items-center space-x-3">
-                    {/* Episode Number */}
                     <div className="flex-shrink-0 w-8 h-8 bg-white/20 rounded-full flex items-center justify-center text-sm font-semibold">
                       {episode.IndexNumber}
                     </div>
-
-                    {/* Episode Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium text-sm truncate">
                           {episode.Name}
                         </h4>
                         {isWatched && (
-                          <div className="flex-shrink-0 w-4 h-4 bg-green-600 rounded-full flex items-center justify-center">
-                            <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                              <polyline points="20 6 9 17 4 12"></polyline>
-                            </svg>
-                          </div>
+                          <Badge variant="secondary">
+                            <EyeIcon />
+                            Watched
+                          </Badge>
+
                         )}
                         {isCurrentEpisode && (
-                          <div className="flex-shrink-0 bg-white/90 text-black px-2 py-0.5 rounded text-xs font-semibold">
+                          <Badge>
                             Now Playing
-                          </div>
+                          </Badge>
                         )}
                       </div>
                       {episode.Overview && (
@@ -3112,9 +3122,9 @@ function MediaPlayerEpisodeSelector(props: MediaPlayerEpisodeSelectorProps) {
                     </div>
                   </div>
                 </div>
-              );
-            })}
-          </div>
+              </DropdownMenuItem>
+            );
+          })}
         </div>
       </DropdownMenuContent>
     </DropdownMenu>
