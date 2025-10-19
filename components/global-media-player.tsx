@@ -390,12 +390,17 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             streamingParams.videoBitrate = bitrate;
         }
 
+        const playSessionId = crypto.randomUUID();
+
+        setPlaySessionId(playSessionId);
+
         const newStreamUrl = await getPlaybackUrl(
             currentMedia.id,
             selectedVersion,
             directPlay,
             streamingParams,
-            audioIndex
+            audioIndex,
+            playSessionId
         );
 
         setStreamUrl(newStreamUrl);
@@ -640,12 +645,16 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                     return;
                 }
 
+                const playSessionId = crypto.randomUUID();
+                setPlaySessionId(playSessionId);
+
                 const streamUrl = await getPlaybackUrl(
                     currentMedia.id,
                     sourceToUse,
                     directPlay,
                     streamingParams,
-                    initialAudioTrackIndex
+                    initialAudioTrackIndex,
+                    playSessionId
                 );
                 setStreamUrl(streamUrl);
 
@@ -746,7 +755,6 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     // Update current subtitle based on video time
     useEffect(() => {
         const subtitle = findCurrentSubtitle(currentTime);
-        console.log(subtitle);
         setCurrentSubtitle(subtitle);
     }, [currentTime, findCurrentSubtitle]);
 

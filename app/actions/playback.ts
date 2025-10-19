@@ -7,6 +7,8 @@ import { SortOrder } from "@jellyfin/sdk/lib/generated-client/models/sort-order"
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { createJellyfinInstance } from "@/lib/utils";
+import {MediaInfoApiGetPlaybackInfoRequest, PlaybackInfoResponse} from "@jellyfin/sdk/lib/generated-client";
+import {getMediaInfoApi} from "@jellyfin/sdk/lib/utils/api";
 
 // Helper function to get auth data from cookies
 async function getAuthData() {
@@ -145,6 +147,30 @@ export async function restoreSeriesToNextUp(seriesId: string): Promise<void> {
         revalidatePath("/");
     } catch (error) {
         console.error("Failed to restore series to Next Up:", error);
+        throw error;
+    }
+}
+
+export async function getPlaybackInfo(
+    itemId: string,
+): Promise<PlaybackInfoResponse> {
+    const { serverUrl, user } = await getAuthData();
+    const jellyfinInstance = createJellyfinInstance();
+    const api = jellyfinInstance.createApi(serverUrl);
+    api.accessToken = user.AccessToken;
+
+    try {
+        const mediaInfoApi = getMediaInfoApi(api);
+
+        const playbackInfoRequest = {
+            itemId: itemId,
+            userId: user.Id,
+        } as MediaInfoApiGetPlaybackInfoRequest;
+
+        const response = await mediaInfoApi.getPlaybackInfo(playbackInfoRequest);
+        return response.data;
+    } catch (error) {
+        console.error("Failed to get playback info:", error);
         throw error;
     }
 }

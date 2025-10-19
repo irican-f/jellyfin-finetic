@@ -144,17 +144,9 @@ export function getOptimalStreamingParams(deviceInfo?: DeviceInfo): {
 } {
   const device = deviceInfo || detectDevice();
 
-  let videoCodec = "h264"; // Default to H.264 for maximum compatibility
+  let videoCodec = "av1,hevc,h264,vp9"; // Default to H.264 for maximum compatibility
   let profile = 'high';
   let level = '4.1';
-
-  // Optimize codec selection based on device support
-  if (device.supportedCodecs.h265 && !device.isIOS) {
-    // H.265 can provide better compression, but avoid on iOS due to battery concerns
-    videoCodec = 'h265,h264'; // Fallback to H.264 if H.265 fails
-    profile = 'main';
-    level = '5.1';
-  }
 
   // iOS-specific optimizations
   if (device.isIOS) {
@@ -165,13 +157,13 @@ export function getOptimalStreamingParams(deviceInfo?: DeviceInfo): {
 
   return {
     videoCodec,
-    audioCodec: "aac", // AAC is universally supported
+    audioCodec: "aac,opus,flac", // AAC is universally supported
     container: "ts", // MPEG-TS for HLS
     profile,
     level,
     videoBitrate: device.recommendedBitrate,
     maxVideoBitrate: device.maxBitrate,
-    audioBitrate: device.isMobile ? 128000 : 256000, // Lower audio bitrate on mobile
+    audioBitrate: device.isMobile ? 128000 : 384000, // Lower audio bitrate on mobile
     audioSampleRate: 48000, // 48kHz is standard
     audioChannels: 2, // Stereo
     segmentContainer: "mp4", // Use MP4 segments for broader compatibility
@@ -180,9 +172,9 @@ export function getOptimalStreamingParams(deviceInfo?: DeviceInfo): {
     transcodingMaxAudioChannels: 2,
     requireAvc: false,
     enableAudioVbrEncoding: true,
-    hevcLevel: 120,
-    hevcVideoBitDepth: 8,
-    hevcProfile: "main",
+    hevcLevel: 150,
+    hevcVideoBitDepth: 10,
+    hevcProfile: "main10",
     hevcAudioChannels: 2,
     aacProfile: "lc",
     av1Profile: "main",
