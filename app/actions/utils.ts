@@ -1,14 +1,14 @@
 "use server";
 
-import {cookies} from "next/headers";
-import {UserLibraryApi} from "@jellyfin/sdk/lib/generated-client/api/user-library-api";
-import {getUserViewsApi} from "@jellyfin/sdk/lib/utils/api/user-views-api";
-import {createJellyfinInstance} from "@/lib/utils";
-import {getSystemApi} from "@jellyfin/sdk/lib/utils/api/system-api";
-import {LogFile} from "@jellyfin/sdk/lib/generated-client/models";
-import {getOptimalStreamingParams} from "@/lib/device-detection";
-import {MediaSourceInfo} from "@/types/jellyfin";
-import {getPlaybackInfo} from "@/app/actions/playback";
+import { cookies } from "next/headers";
+import { UserLibraryApi } from "@jellyfin/sdk/lib/generated-client/api/user-library-api";
+import { getUserViewsApi } from "@jellyfin/sdk/lib/utils/api/user-views-api";
+import { createJellyfinInstance } from "@/lib/utils";
+import { getSystemApi } from "@jellyfin/sdk/lib/utils/api/system-api";
+import { LogFile } from "@jellyfin/sdk/lib/generated-client/models";
+import { getOptimalStreamingParams } from "@/lib/device-detection";
+import { MediaSourceInfo } from "@/types/jellyfin";
+import { postPlaybackInfo } from "@/app/actions/playback";
 
 // Helper function to get auth data from cookies
 export async function getAuthData() {
@@ -36,7 +36,7 @@ export async function getImageUrl(
     maxWidth?: number,
     maxHeight?: number
 ): Promise<string> {
-    const {serverUrl} = await getAuthData();
+    const { serverUrl } = await getAuthData();
 
     const params = new URLSearchParams();
 
@@ -66,7 +66,7 @@ export async function getImageUrl(
 }
 
 export async function getDownloadUrl(itemId: string): Promise<string> {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
 
     return `${serverUrl}/Items/${itemId}/Download?api_key=${user.AccessToken}`;
 }
@@ -98,7 +98,7 @@ async function getHlsUrl(
     audioStreamIndex: number,
     playSessionId: string
 ): Promise<string> {
-    const {serverUrl, user, deviceId} = await getAuthData();
+    const { serverUrl, user, deviceId } = await getAuthData();
     const {
         videoCodec,
         audioCodec,
@@ -155,21 +155,71 @@ async function getHlsUrl(
         "hevc-videobitdepth": hevcVideoBitDepth.toString(),
         "hevc-profile": hevcProfile,
         "hevc-audiochannels": hevcAudioChannels.toString(),
+        "hevc-rangetype": hevcRangeType,
+        "hevc-deinterlace": hevcDeinterlace.toString(),
         // "aac-profile": aacProfile,
         "av1-profile": av1Profile,
         "av1-rangetype": av1RangeType,
         "av1-level": av1Level.toString(),
         "vp9-rangetype": vp9RangeType,
-        "hevc-rangetype": hevcRangeType,
-        "hevc-deinterlace": hevcDeinterlace.toString(),
         "h264-profile": h264Profile,
         "h264-rangetype": h264RangeType,
         "h264-level": h264Level.toString(),
         "h264-deinterlace": h264Deinterlace.toString(),
-        TranscodeReasons: "ContainerNotSupported, AudioCodecNotSupported, VideoRangeTypeNotSupported"
+        TranscodeReasons: "ContainerNotSupported, AudioCodecNotSupported, VideoRangeTypeNotSupported",
     });
 
-    return `${serverUrl}/videos/${itemId}/master.m3u8?${params.toString()}`;
+    const masterUrl = `${serverUrl}/videos/${itemId}/master.m3u8?${params.toString()}`;
+
+    try {
+        // Fetch the master.m3u8 file
+        const response = await fetch(masterUrl, {
+            headers: {
+                'Authorization': `MediaBrowser Token="${user.AccessToken}"`,
+            },
+        });
+
+        if (!response.ok) {
+            throw new Error(`Failed to fetch master.m3u8: ${response.status} ${response.statusText}`);
+        }
+
+        const m3u8Content = await response.text();
+
+        // Parse the m3u8 content to find the first stream
+        const lines = m3u8Content.split('\n');
+        let firstStreamUrl = '';
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            if (line.startsWith('#EXT-X-STREAM-INF:')) {
+                // Look for the next line which should be the stream URL
+                if (i + 1 < lines.length) {
+                    const nextLine = lines[i + 1].trim();
+                    if (nextLine && !nextLine.startsWith('#')) {
+                        // This is the stream URL, make it absolute if it's relative
+                        if (nextLine.startsWith('http')) {
+                            firstStreamUrl = nextLine;
+                        } else {
+                            // Make it absolute by combining with the base URL
+                            const baseUrl = masterUrl.substring(0, masterUrl.lastIndexOf('/'));
+                            firstStreamUrl = `${baseUrl}/${nextLine}`;
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!firstStreamUrl) {
+            throw new Error('No stream URL found in master.m3u8');
+        }
+
+        return firstStreamUrl;
+    } catch (error) {
+        console.error('Failed to fetch and parse master.m3u8:', error);
+        // Fallback to returning the master URL if parsing fails
+        return masterUrl;
+    }
 }
 
 export async function getPlaybackUrl(
@@ -181,7 +231,7 @@ export async function getPlaybackUrl(
     playSessionId: string
 ): Promise<string> {
 
-    const playbackInfo = await getPlaybackInfo(itemId)
+    const playbackInfo = await postPlaybackInfo(itemId)
 
     if (!playbackInfo.MediaSources) {
         throw new Error("No media sources available in playback info");
@@ -191,9 +241,9 @@ export async function getPlaybackUrl(
 
     if (directPlay) {
         // Audio track selection during direct play is handled by the client-side player, not the URL.
-        return getDirectPlayUrl(itemId, mediaSource.Id!, playSessionId);
+        return getDirectPlayUrl(itemId, mediaSource.Id!, playbackInfo.PlaySessionId!);
     } else {
-        return getHlsUrl(itemId, mediaSource, streamingParams, audioStreamIndex, playSessionId);
+        return getHlsUrl(itemId, mediaSource, streamingParams, audioStreamIndex, playbackInfo.PlaySessionId!);
     }
 }
 
@@ -210,7 +260,7 @@ export async function getSubtitleTracks(
         isForced: boolean;
     }>
 > {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
     const jellyfinInstance = createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
@@ -218,7 +268,7 @@ export async function getSubtitleTracks(
     try {
         // First get the media item to find subtitle streams
         const userLibraryApi = new UserLibraryApi(api.configuration);
-        const {data: item} = await userLibraryApi.getItem({
+        const { data: item } = await userLibraryApi.getItem({
             userId: user.Id,
             itemId: itemId,
         });
@@ -254,12 +304,12 @@ export async function getSubtitleTracks(
 
 export async function getUserLibraries(): Promise<any[]> {
     try {
-        const {serverUrl, user} = await getAuthData();
+        const { serverUrl, user } = await getAuthData();
         const jellyfinInstance = createJellyfinInstance();
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 
-        const {data} = await getUserViewsApi(api).getUserViews({
+        const { data } = await getUserViewsApi(api).getUserViews({
             userId: user.Id,
             includeExternalContent: false,
         });
@@ -279,12 +329,12 @@ export async function getUserLibraries(): Promise<any[]> {
 
 export async function getLibraryById(libraryId: string): Promise<any | null> {
     try {
-        const {serverUrl, user} = await getAuthData();
+        const { serverUrl, user } = await getAuthData();
         const jellyfinInstance = createJellyfinInstance();
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 
-        const {data} = await getUserViewsApi(api).getUserViews({
+        const { data } = await getUserViewsApi(api).getUserViews({
             userId: user.Id,
             includeExternalContent: false,
         });
@@ -320,7 +370,7 @@ export async function fetchRemoteImages(
     limit: number = 30,
     includeAllLanguages: boolean = false
 ): Promise<RemoteImagesResponse> {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
 
     const params = new URLSearchParams({
         type,
@@ -350,7 +400,7 @@ export async function downloadRemoteImage(
     imageUrl: string,
     providerName: string
 ): Promise<void> {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
 
     const params = new URLSearchParams({
         Type: imageType,
@@ -386,7 +436,7 @@ export interface CurrentImage {
 export async function fetchCurrentImages(
     itemId: string
 ): Promise<CurrentImage[]> {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
 
     const url = `${serverUrl}/Items/${itemId}/Images`;
 
@@ -408,7 +458,7 @@ export async function reorderBackdropImage(
     currentIndex: number,
     newIndex: number
 ): Promise<void> {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
     console.log(
         `Reordering backdrop image for item ${itemId} from index ${currentIndex} to ${newIndex}`
     );
@@ -435,7 +485,7 @@ export async function deleteImage(
     imageType: string,
     imageIndex?: number
 ): Promise<void> {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
 
     let url = `${serverUrl}/Items/${itemId}/Images/${imageType}`;
     if (imageIndex !== undefined) {
@@ -480,7 +530,7 @@ export async function getUserWithPolicy(
     userId: string,
     itemId: string
 ): Promise<UserWithPolicy | null> {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
 
     const url = `${serverUrl}/Users/${userId}/Items/${itemId}`;
 
@@ -518,7 +568,7 @@ export async function getUserWithPolicy(
 }
 
 export async function fetchScheduledTasks(): Promise<any[]> {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
 
     const url = `${serverUrl}/ScheduledTasks`;
 
@@ -551,14 +601,14 @@ export interface JellyfinLog {
 }
 
 export async function fetchJellyfinLogs(): Promise<LogFile[]> {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
     const jellyfinInstance = createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
     try {
         const systemApi = getSystemApi(api);
-        const {data} = await systemApi.getServerLogs();
+        const { data } = await systemApi.getServerLogs();
 
         return data || [];
     } catch (error) {
@@ -568,7 +618,7 @@ export async function fetchJellyfinLogs(): Promise<LogFile[]> {
 }
 
 export async function fetchLogContent(logName: string): Promise<string> {
-    const {serverUrl, user} = await getAuthData();
+    const { serverUrl, user } = await getAuthData();
     const jellyfinInstance = createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;

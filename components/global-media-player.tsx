@@ -416,8 +416,6 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
     const selectSubtitleTrack = useCallback(
         (subtitleTrack: CustomSubtitleTrack | null) => {
-            console.log("==== Selecting subtitle track:", subtitleTrack);
-
             if (!subtitleTrack) {
                 // Turn off subtitles
                 setSubtitleData([]);
