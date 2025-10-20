@@ -227,9 +227,8 @@ export async function getPlaybackUrl(
     mediaSource: MediaSourceInfo,
     directPlay: boolean,
     streamingParams: ReturnType<typeof getOptimalStreamingParams>,
-    audioStreamIndex: number,
-    playSessionId: string
-): Promise<string> {
+    audioStreamIndex: number
+): Promise<{ streamUrl: string, playSessionId: string }> {
 
     const playbackInfo = await postPlaybackInfo(itemId)
 
@@ -241,9 +240,15 @@ export async function getPlaybackUrl(
 
     if (directPlay) {
         // Audio track selection during direct play is handled by the client-side player, not the URL.
-        return getDirectPlayUrl(itemId, mediaSource.Id!, playbackInfo.PlaySessionId!);
+        return {
+            streamUrl: await getDirectPlayUrl(itemId, mediaSource.Id!, playbackInfo.PlaySessionId!),
+            playSessionId: playbackInfo.PlaySessionId!
+        }
     } else {
-        return getHlsUrl(itemId, mediaSource, streamingParams, audioStreamIndex, playbackInfo.PlaySessionId!);
+        return {
+            streamUrl: await getHlsUrl(itemId, mediaSource, streamingParams, audioStreamIndex, playbackInfo.PlaySessionId!),
+            playSessionId: playbackInfo.PlaySessionId!
+        }
     }
 }
 

@@ -390,20 +390,16 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             streamingParams.videoBitrate = bitrate;
         }
 
-        const playSessionId = crypto.randomUUID();
-
-        setPlaySessionId(playSessionId);
-
-        const newStreamUrl = await getPlaybackUrl(
+        const { streamUrl, playSessionId } = await getPlaybackUrl(
             currentMedia.id,
             selectedVersion,
             directPlay,
             streamingParams,
-            audioIndex,
-            playSessionId
+            audioIndex
         );
 
-        setStreamUrl(newStreamUrl);
+        setPlaySessionId(playSessionId);
+        setStreamUrl(streamUrl);
     };
 
     const handleAudioTrackChange = (track: { index: number }) => {
@@ -643,17 +639,15 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                     return;
                 }
 
-                const playSessionId = crypto.randomUUID();
-                setPlaySessionId(playSessionId);
-
-                const streamUrl = await getPlaybackUrl(
+                const { streamUrl, playSessionId } = await getPlaybackUrl(
                     currentMedia.id,
                     sourceToUse,
                     directPlay,
                     streamingParams,
-                    initialAudioTrackIndex,
-                    playSessionId
+                    initialAudioTrackIndex
                 );
+
+                setPlaySessionId(playSessionId);
                 setStreamUrl(streamUrl);
 
                 const subtitleTracksList = await getSubtitleTracks(
