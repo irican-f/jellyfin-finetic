@@ -87,6 +87,7 @@ export async function fetchMovies(
         ItemFields.CanDelete,
         ItemFields.PrimaryImageAspectRatio,
         ItemFields.Overview,
+        ItemFields.Genres,
       ],
     });
     return data.Items || [];
@@ -129,6 +130,7 @@ export async function fetchTVShows(
         ItemFields.CanDelete,
         ItemFields.PrimaryImageAspectRatio,
         ItemFields.Overview,
+        ItemFields.Genres,
       ],
     });
     return data.Items || [];
@@ -234,6 +236,7 @@ export async function fetchPersonFilmography(
         ItemFields.PrimaryImageAspectRatio,
         ItemFields.Overview,
         ItemFields.People,
+        ItemFields.Genres,
       ],
     });
     return data.Items || [];
@@ -270,6 +273,7 @@ export async function fetchResumeItems() {
         ItemFields.CanDelete,
         ItemFields.PrimaryImageAspectRatio,
         ItemFields.Overview,
+        ItemFields.Genres,
       ],
       enableImages: true,
     });
@@ -410,6 +414,7 @@ export async function fetchLibraryItems(
         ItemFields.PrimaryImageAspectRatio,
         ItemFields.Overview,
         ItemFields.DateCreated,
+        ItemFields.Genres,
       ],
     });
 
@@ -482,6 +487,7 @@ export async function fetchLibraryItemsPage(
         ItemFields.PrimaryImageAspectRatio,
         ItemFields.Overview,
         ItemFields.DateCreated,
+        ItemFields.Genres,
       ],
     });
 
@@ -696,6 +702,7 @@ export async function fetchRecentlyAddedItems(
         ItemFields.PrimaryImageAspectRatio,
         ItemFields.Overview,
         ItemFields.DateCreated,
+        ItemFields.Genres,
       ],
     });
 

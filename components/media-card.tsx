@@ -355,9 +355,13 @@ export function MediaCard({
             {libraryName && <Badge>{libraryName}</Badge>}
             <h4 className="font-medium leading-none">{item.Name}</h4>
             {item.Genres && item.Genres.length > 0 && (
-              <p className="text-sm text-muted-foreground">
-                Genres: {item.Genres.join(", ")}
-              </p>
+              <div className="flex flex-wrap gap-1">
+                {item.Genres.map((genre, index) => (
+                  <Badge key={index} variant="secondary" className="text-xs">
+                    {genre}
+                  </Badge>
+                ))}
+              </div>
             )}
           </div>
           {item.Overview && (
