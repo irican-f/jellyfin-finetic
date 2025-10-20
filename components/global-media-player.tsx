@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import {
     JellyfinItem,
     MediaSourceInfo,
@@ -74,6 +75,7 @@ interface GlobalMediaPlayerProps {
 }
 
 export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
+    const router = useRouter();
     const {
         isPlayerVisible,
         setIsPlayerVisible,
@@ -138,6 +140,34 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     const [duration, setDuration] = useState(0);
     const [seekToTime, setSeekToTime] = useState<number | null>(null);
     const blobUrlsRef = useRef<string[]>([]);
+
+    // Auto-hide controls state
+    const [controlsVisible, setControlsVisible] = useState(true);
+    const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    // Auto-hide controls logic
+    const showControls = useCallback(() => {
+        setControlsVisible(true);
+        if (hideControlsTimeoutRef.current) {
+            clearTimeout(hideControlsTimeoutRef.current);
+        }
+        hideControlsTimeoutRef.current = setTimeout(() => {
+            setControlsVisible(false);
+        }, 5000); // Hide after 5 seconds
+    }, []);
+
+    const handleMouseMove = useCallback(() => {
+        showControls();
+    }, [showControls]);
+
+    const handleMouseLeave = useCallback(() => {
+        if (hideControlsTimeoutRef.current) {
+            clearTimeout(hideControlsTimeoutRef.current);
+        }
+        hideControlsTimeoutRef.current = setTimeout(() => {
+            setControlsVisible(false);
+        }, 5000); // Hide after 5 seconds
+    }, []);
 
 
     // Episode navigation state
@@ -361,6 +391,12 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         // Clean up blob URLs
         cleanupBlobUrls();
 
+        // Clean up auto-hide timeout
+        if (hideControlsTimeoutRef.current) {
+            clearTimeout(hideControlsTimeoutRef.current);
+            hideControlsTimeoutRef.current = null;
+        }
+
         setIsPlayerVisible(false);
         setStreamUrl(null);
         setMediaDetails(null);
@@ -374,7 +410,14 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         setVideoStarted(false); // Reset video started state
         setBackdropImageLoaded(false); // Reset backdrop image state
         setBlurDataUrl(null); // Reset blur data URL
-    }, [stopProgressTracking, cleanupBlobUrls]);
+        setControlsVisible(true); // Reset controls visibility
+
+        // Refresh the page to update any data that might have changed during playback
+        // Use a small delay to ensure the player state is properly reset
+        setTimeout(() => {
+            router.refresh();
+        }, 100);
+    }, [stopProgressTracking, cleanupBlobUrls, router]);
 
     const updateStreamUrl = async (audioIndex: number) => {
         if (!currentMedia || !selectedVersion) return;
@@ -516,9 +559,17 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             setVideoStarted(false); // Reset video started state when loading new media
             setBackdropImageLoaded(false); // Reset backdrop image state
             setBlurDataUrl(null); // Reset blur data URL
+            setControlsVisible(true); // Show controls when player opens
             loadMedia();
         }
     }, [currentMedia, isPlayerVisible, videoBitrate]);
+
+    // Start auto-hide timer when player is visible and video has started
+    useEffect(() => {
+        if (isPlayerVisible && videoStarted) {
+            showControls(); // This will start the 5-second timer
+        }
+    }, [isPlayerVisible, videoStarted, showControls]);
 
     // Decode blur hash for backdrop image
     useEffect(() => {
@@ -855,6 +906,9 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             if (progressIntervalRef.current) {
                 clearInterval(progressIntervalRef.current);
             }
+            if (hideControlsTimeoutRef.current) {
+                clearTimeout(hideControlsTimeoutRef.current);
+            }
             // Clean up blob URLs on unmount
             cleanupBlobUrls();
         };
@@ -872,7 +926,11 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     }));
 
     return (
-        <div className="fixed inset-0 z-[999999] bg-black flex items-center justify-center w-screen">
+        <div
+            className="fixed inset-0 z-[999999] bg-black flex items-center justify-center w-screen"
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+        >
             <MediaPlayer
                 autoHide
                 onEnded={handleClose}
@@ -1119,191 +1177,202 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                         </motion.div>
                     )}
                 </AnimatePresence>
-                <MediaPlayerControls className="flex-col items-start gap-2.5 px-6 pb-4 z-[9999]">
-                    <Button
-                        variant="ghost"
-                        className="fixed left-4 top-4 z-10 hover:backdrop-blur-md"
-                        onClick={handleClose}
-                    >
-                        <ArrowLeft className="h-4 w-4" />
-                        Go Back
-                    </Button>
+                <AnimatePresence>
+                    {controlsVisible && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 20 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            exit={{ opacity: 0, y: 20 }}
+                            transition={{ duration: 0.3 }}
+                        >
+                            <MediaPlayerControls className="flex-col items-start gap-2.5 px-6 pb-4 z-[9999]">
+                                <Button
+                                    variant="ghost"
+                                    className="fixed left-4 top-4 z-10 hover:backdrop-blur-md"
+                                    onClick={handleClose}
+                                >
+                                    <ArrowLeft className="h-4 w-4" />
+                                    Go Back
+                                </Button>
 
-                    {/* Fetching subtitles indicator */}
-                    {fetchingSubtitles && (
-                        <div
-                            className="fixed right-4 top-16 z-10 bg-black/50 backdrop-blur-sm rounded-md px-3 py-2 text-white text-sm flex items-center gap-2">
-                            <div
-                                className="animate-spin h-4 w-4 border-2 border-white/30 border-t-white rounded-full"></div>
-                            Fetching subtitles
-                        </div>
-                    )}
-                    <MediaPlayerControlsOverlay />
-                    <div className="flex flex-col w-full gap-1.5 pb-2">
-                        {/* Show name for episodes */}
-                        {mediaDetails?.SeriesName && (
-                            <div className="text-sm text-white/70 truncate font-medium">
-                                {mediaDetails.SeriesName}
-                            </div>
-                        )}
-
-                        {/* Episode/Movie title with episode number */}
-                        <div className="flex items-center justify-between w-full">
-                            <h2 className="text-3xl font-semibold text-white truncate font-poppins">
-                                {mediaDetails?.Type === "Episode" && mediaDetails?.IndexNumber
-                                    ? `${mediaDetails.IndexNumber}. ${mediaDetails.Name || currentMedia.name}`
-                                    : mediaDetails?.Name || currentMedia.name}
-                            </h2>
-
-                            {/* End time display */}
-                            {duration > 0 && currentTime >= 0 && (
-                                <div className="text-sm text-white/70 ml-4 whitespace-nowrap">
-                                    Ends at {formatEndTime(currentTime, duration)}
-                                </div>
-                            )}
-                        </div>
-
-                        {/* Season and episode info + runtime */}
-                        <div className="flex items-center gap-3 text-sm text-white/60">
-                            {mediaDetails?.Type === "Episode" && (
-                                <div className="space-x-1">
-                                    {mediaDetails?.ParentIndexNumber && (
-                                        <span>S{mediaDetails.ParentIndexNumber}</span>
+                                {/* Fetching subtitles indicator */}
+                                {fetchingSubtitles && (
+                                    <div
+                                        className="fixed right-4 top-16 z-10 bg-black/50 backdrop-blur-sm rounded-md px-3 py-2 text-white text-sm flex items-center gap-2">
+                                        <div
+                                            className="animate-spin h-4 w-4 border-2 border-white/30 border-t-white rounded-full"></div>
+                                        Fetching subtitles
+                                    </div>
+                                )}
+                                <MediaPlayerControlsOverlay />
+                                <div className="flex flex-col w-full gap-1.5 pb-2">
+                                    {/* Show name for episodes */}
+                                    {mediaDetails?.SeriesName && (
+                                        <div className="text-sm text-white/70 truncate font-medium">
+                                            {mediaDetails.SeriesName}
+                                        </div>
                                     )}
-                                    <span>•</span>
-                                    {mediaDetails?.IndexNumber && (
-                                        <span>E{mediaDetails.IndexNumber}</span>
-                                    )}
+
+                                    {/* Episode/Movie title with episode number */}
+                                    <div className="flex items-center justify-between w-full">
+                                        <h2 className="text-3xl font-semibold text-white truncate font-poppins">
+                                            {mediaDetails?.Type === "Episode" && mediaDetails?.IndexNumber
+                                                ? `${mediaDetails.IndexNumber}. ${mediaDetails.Name || currentMedia.name}`
+                                                : mediaDetails?.Name || currentMedia.name}
+                                        </h2>
+
+                                        {/* End time display */}
+                                        {duration > 0 && currentTime >= 0 && (
+                                            <div className="text-sm text-white/70 ml-4 whitespace-nowrap">
+                                                Ends at {formatEndTime(currentTime, duration)}
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Season and episode info + runtime */}
+                                    <div className="flex items-center gap-3 text-sm text-white/60">
+                                        {mediaDetails?.Type === "Episode" && (
+                                            <div className="space-x-1">
+                                                {mediaDetails?.ParentIndexNumber && (
+                                                    <span>S{mediaDetails.ParentIndexNumber}</span>
+                                                )}
+                                                <span>•</span>
+                                                {mediaDetails?.IndexNumber && (
+                                                    <span>E{mediaDetails.IndexNumber}</span>
+                                                )}
+                                            </div>
+                                        )}
+
+                                        {mediaDetails?.RunTimeTicks && (
+                                            <span>{formatRuntime(mediaDetails.RunTimeTicks)}</span>
+                                        )}
+
+                                        {mediaDetails?.ProductionYear && (
+                                            <span>{mediaDetails.ProductionYear}</span>
+                                        )}
+                                    </div>
                                 </div>
-                            )}
+                                <MediaPlayerSeek />
+                                <div className="flex w-full items-center gap-2">
+                                    <div className="flex flex-1 items-center gap-2">
+                                        <MediaPlayerPlay />
+                                        {/* Previous Episode Button */}
+                                        <MediaPlayerPreviousEpisode
+                                            previousEpisode={previousEpisode}
+                                            onPreviousEpisode={handlePreviousEpisode}
+                                            className="text-white hover:bg-white/20"
+                                        />
+                                        <MediaPlayerSeekBackward>
+                                            <RotateCcw />
+                                        </MediaPlayerSeekBackward>
+                                        <MediaPlayerSeekForward>
+                                            <RotateCw />
+                                        </MediaPlayerSeekForward>
+                                        {/* Next Episode Button */}
+                                        <MediaPlayerNextEpisode
+                                            nextEpisode={nextEpisode}
+                                            onNextEpisode={handleNextEpisode}
+                                            className="text-white hover:bg-white/20"
+                                        />
+                                        <MediaPlayerTime />
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                        <MediaPlayerVolume expandable />
 
-                            {mediaDetails?.RunTimeTicks && (
-                                <span>{formatRuntime(mediaDetails.RunTimeTicks)}</span>
-                            )}
-
-                            {mediaDetails?.ProductionYear && (
-                                <span>{mediaDetails.ProductionYear}</span>
-                            )}
-                        </div>
-                    </div>
-                    <MediaPlayerSeek />
-                    <div className="flex w-full items-center gap-2">
-                        <div className="flex flex-1 items-center gap-2">
-                            <MediaPlayerPlay />
-                            {/* Previous Episode Button */}
-                            <MediaPlayerPreviousEpisode
-                                previousEpisode={previousEpisode}
-                                onPreviousEpisode={handlePreviousEpisode}
-                                className="text-white hover:bg-white/20"
-                            />
-                            <MediaPlayerSeekBackward>
-                                <RotateCcw />
-                            </MediaPlayerSeekBackward>
-                            <MediaPlayerSeekForward>
-                                <RotateCw />
-                            </MediaPlayerSeekForward>
-                            {/* Next Episode Button */}
-                            <MediaPlayerNextEpisode
-                                nextEpisode={nextEpisode}
-                                onNextEpisode={handleNextEpisode}
-                                className="text-white hover:bg-white/20"
-                            />
-                            <MediaPlayerTime />
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <MediaPlayerVolume expandable />
-
-                            {/* Navigator button */}
-                            {onToggleAIAsk && (
-                                <MediaPlayerTooltip tooltip="Navigator" shortcut="Cmd + K">
-                                    <Button
-                                        variant="ghost"
-                                        size="sm"
-                                        className="text-white hover:bg-white/20"
-                                        onClick={onToggleAIAsk}
-                                    >
-                                        <Ship className="h-4 w-4" />
-                                    </Button>
-                                </MediaPlayerTooltip>
-                            )}
-                            {/* People button with cast and crew popover */}
-                            {mediaDetails?.People && mediaDetails.People.length > 0 && (
-                                <Popover>
-                                    <PopoverTrigger asChild>
-                                        <MediaPlayerTooltip tooltip="Cast & Crew">
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
-                                                className="text-white hover:bg-white/20"
-                                            >
-                                                <Users className="h-4 w-4" />
-                                            </Button>
-                                        </MediaPlayerTooltip>
-                                    </PopoverTrigger>
-                                    <PopoverContent
-                                        className="w-80 bg-black/90 border-white/20 text-white z-[1000000]"
-                                        side="top"
-                                    >
-                                        <div className="space-y-3">
-                                            <h3 className="font-semibold text-lg">Cast & Crew</h3>
-                                            <div className="max-h-64 overflow-y-auto space-y-2">
-                                                {mediaDetails.People.map((person, index) => (
-                                                    <div
-                                                        key={`${person.Id}-${index}`}
-                                                        className="flex items-center space-x-3 p-2 rounded hover:bg-white/10"
-                                                    >
-                                                        <div className="flex-shrink-0">
-                                                            {person.PrimaryImageTag ? (
-                                                                <img
-                                                                    src={`${serverUrl}/Items/${person.Id}/Images/Primary?fillHeight=759&fillWidth=506&quality=96`}
-                                                                    alt={person.Name!}
-                                                                    className="w-8 h-8 rounded-full object-cover"
-                                                                    onError={(e) => {
-                                                                        const target = e.target as HTMLImageElement;
-                                                                        target.style.display = "none";
-                                                                        target.nextElementSibling!.classList.remove(
-                                                                            "hidden"
-                                                                        );
-                                                                    }}
-                                                                />
-                                                            ) : null}
-                                                            <div
-                                                                className={`w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-xs ${person.PrimaryImageTag ? "hidden" : ""}`}
-                                                            >
-                                                                {person.Name?.charAt(0) || "?"}
-                                                            </div>
-                                                        </div>
-                                                        <div className="flex-1 min-w-0">
-                                                            <p className="font-medium text-sm truncate">
-                                                                {person.Name}
-                                                            </p>
-                                                            {person.Role && (
-                                                                <p className="text-xs text-white/70 truncate">
-                                                                    {person.Role}
-                                                                </p>
-                                                            )}
+                                        {/* Navigator button */}
+                                        {onToggleAIAsk && (
+                                            <MediaPlayerTooltip tooltip="Navigator" shortcut="Cmd + K">
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="text-white hover:bg-white/20"
+                                                    onClick={onToggleAIAsk}
+                                                >
+                                                    <Ship className="h-4 w-4" />
+                                                </Button>
+                                            </MediaPlayerTooltip>
+                                        )}
+                                        {/* People button with cast and crew popover */}
+                                        {mediaDetails?.People && mediaDetails.People.length > 0 && (
+                                            <Popover>
+                                                <PopoverTrigger asChild>
+                                                    <MediaPlayerTooltip tooltip="Cast & Crew">
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="text-white hover:bg-white/20"
+                                                        >
+                                                            <Users className="h-4 w-4" />
+                                                        </Button>
+                                                    </MediaPlayerTooltip>
+                                                </PopoverTrigger>
+                                                <PopoverContent
+                                                    className="w-80 bg-black/90 border-white/20 text-white z-[1000000]"
+                                                    side="top"
+                                                >
+                                                    <div className="space-y-3">
+                                                        <h3 className="font-semibold text-lg">Cast & Crew</h3>
+                                                        <div className="max-h-64 overflow-y-auto space-y-2">
+                                                            {mediaDetails.People.map((person, index) => (
+                                                                <div
+                                                                    key={`${person.Id}-${index}`}
+                                                                    className="flex items-center space-x-3 p-2 rounded hover:bg-white/10"
+                                                                >
+                                                                    <div className="flex-shrink-0">
+                                                                        {person.PrimaryImageTag ? (
+                                                                            <img
+                                                                                src={`${serverUrl}/Items/${person.Id}/Images/Primary?fillHeight=759&fillWidth=506&quality=96`}
+                                                                                alt={person.Name!}
+                                                                                className="w-8 h-8 rounded-full object-cover"
+                                                                                onError={(e) => {
+                                                                                    const target = e.target as HTMLImageElement;
+                                                                                    target.style.display = "none";
+                                                                                    target.nextElementSibling!.classList.remove(
+                                                                                        "hidden"
+                                                                                    );
+                                                                                }}
+                                                                            />
+                                                                        ) : null}
+                                                                        <div
+                                                                            className={`w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-xs ${person.PrimaryImageTag ? "hidden" : ""}`}
+                                                                        >
+                                                                            {person.Name?.charAt(0) || "?"}
+                                                                        </div>
+                                                                    </div>
+                                                                    <div className="flex-1 min-w-0">
+                                                                        <p className="font-medium text-sm truncate">
+                                                                            {person.Name}
+                                                                        </p>
+                                                                        {person.Role && (
+                                                                            <p className="text-xs text-white/70 truncate">
+                                                                                {person.Role}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            ))}
                                                         </div>
                                                     </div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </PopoverContent>
-                                </Popover>
-                            )}
-                            <MediaPlayerEpisodeSelector
-                                episodes={seasonEpisodes}
-                                currentEpisodeId={currentMedia?.id}
-                                onEpisodeSelect={handleEpisodeSelect}
-                                seriesName={mediaDetails?.SeriesName || undefined}
-                                seasonNumber={mediaDetails?.ParentIndexNumber || undefined}
-                                className="text-white hover:bg-white/20"
-                            />
-                            <MediaPlayerSettings />
-                            <MediaPlayerPiP />
-                            <MediaPlayerFullscreen />
-                        </div>
-                    </div>
-                </MediaPlayerControls>
+                                                </PopoverContent>
+                                            </Popover>
+                                        )}
+                                        <MediaPlayerEpisodeSelector
+                                            episodes={seasonEpisodes}
+                                            currentEpisodeId={currentMedia?.id}
+                                            onEpisodeSelect={handleEpisodeSelect}
+                                            seriesName={mediaDetails?.SeriesName || undefined}
+                                            seasonNumber={mediaDetails?.ParentIndexNumber || undefined}
+                                            className="text-white hover:bg-white/20"
+                                        />
+                                        <MediaPlayerSettings />
+                                        <MediaPlayerPiP />
+                                        <MediaPlayerFullscreen />
+                                    </div>
+                                </div>
+                            </MediaPlayerControls>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
             </MediaPlayer>
         </div>
     );
