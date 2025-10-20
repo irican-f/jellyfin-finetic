@@ -75,8 +75,8 @@ const PLAYBACK_SPEED_NAME = "MediaPlayerPlaybackSpeed";
 const FLOATING_MENU_SIDE_OFFSET = 10;
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2];
 
-const SEEK_STEP_SHORT = 5;
-const SEEK_STEP_LONG = 10;
+const SEEK_STEP_SHORT = 10;
+const SEEK_STEP_LONG = 30;
 const SEEK_COLLISION_PADDING = 10;
 const SEEK_TOOLTIP_WIDTH_FALLBACK = 240;
 
@@ -528,7 +528,7 @@ function MediaPlayerRootImpl(props: MediaPlayerRootProps) {
               type: MediaActionTypes.MEDIA_SEEK_REQUEST,
               detail: Math.min(
                 mediaElement.duration,
-                mediaElement.currentTime + SEEK_STEP_SHORT
+                mediaElement.currentTime + SEEK_STEP_LONG
               ),
             });
           }
