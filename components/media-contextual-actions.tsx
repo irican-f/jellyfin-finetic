@@ -232,7 +232,7 @@ export function MediaContextualActions({
     return (
         <DropdownMenu>
             <DropdownMenuTrigger asChild>
-                <button className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10">
+                <button className="absolute top-2 right-2 bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-full p-1.5 opacity-0 group-hover:opacity-100 transition-opacity duration-200 z-10 cursor-pointer">
                     <MoreVertical className="h-4 w-4 text-white" />
                 </button>
             </DropdownMenuTrigger>

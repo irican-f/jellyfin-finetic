@@ -1,12 +1,8 @@
 import { fetchLibraryItems, getLibraryById } from "@/app/actions";
 import { getAuthData } from "@/app/actions/utils";
-import { AuthErrorHandler } from "@/app/components/auth-error-handler";
-import Aurora from "@/components/Aurora/Aurora";
-import { LibraryMediaList } from "@/components/library-media-list";
+import { LibraryMediaListVirtual } from "@/components/library-media-list-virtual";
 import { SearchBar } from "@/components/search-component";
 import { ScanLibraryButton } from "@/components/scan-library-button";
-import LightRays from "@/components/LightRays/LightRays";
-import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models/base-item-dto";
 
 export default async function LibraryPage({
   params,
@@ -18,17 +14,14 @@ export default async function LibraryPage({
   const authData = await getAuthData();
   const { serverUrl, user } = authData;
 
-  // Fetch both library details and items  
+  // Fetch both library details and initial items (first page only)
   const [libraryDetails, initialLibraryItems] = await Promise.all([
     getLibraryById(id),
-    fetchLibraryItems(id), // First fetch to get totalRecordCount
+    fetchLibraryItems(id, 50, 0), // Load first 50 items only
   ]);
 
-  // Fetch all items using the total count
-  const libraryItems = await fetchLibraryItems(id, initialLibraryItems.totalRecordCount);
-
-  console.log(libraryItems.items.length)
-  console.log(libraryItems.totalRecordCount)
+  console.log(`Initial items: ${initialLibraryItems.items.length}`)
+  console.log(`Total count: ${initialLibraryItems.totalRecordCount}`)
 
   const libraryName = libraryDetails?.Name || "Library";
 
@@ -49,11 +42,14 @@ export default async function LibraryPage({
             <ScanLibraryButton libraryId={id} />
           </div>
           <span className="font-mono text-muted-foreground">
-            {libraryItems.items.length} items
+            {initialLibraryItems.totalRecordCount} items
           </span>
         </div>
-        <LibraryMediaList
-          mediaItems={libraryItems.items}
+
+        <LibraryMediaListVirtual
+          libraryId={id}
+          mediaItems={initialLibraryItems.items}
+          totalCount={initialLibraryItems.totalRecordCount}
           serverUrl={serverUrl}
         />
       </div>

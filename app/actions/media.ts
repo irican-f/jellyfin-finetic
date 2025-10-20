@@ -434,6 +434,74 @@ export async function fetchLibraryItems(
   }
 }
 
+// Server action for infinite scroll pagination with sorting and filtering
+export async function fetchLibraryItemsPage(
+  libraryId: string,
+  startIndex: number,
+  limit: number = 50,
+  sortBy?: string,
+  sortOrder?: string,
+  searchQuery?: string
+): Promise<JellyfinItem[]> {
+  try {
+    const { serverUrl, user } = await getAuthData();
+    const jellyfinInstance = createJellyfinInstance();
+    const api = jellyfinInstance.createApi(serverUrl);
+    api.accessToken = user.AccessToken;
+
+    // Map sort field to Jellyfin sort options
+    const getJellyfinSortBy = (sortField: string) => {
+      const sortMap: Record<string, ItemSortBy> = {
+        "SortName": ItemSortBy.SortName,
+        "CommunityRating": ItemSortBy.CommunityRating,
+        "CriticRating": ItemSortBy.CriticRating,
+        "DateCreated": ItemSortBy.DateCreated,
+        "PremiereDate": ItemSortBy.PremiereDate,
+        "Runtime": ItemSortBy.Runtime,
+        "ProductionYear": ItemSortBy.ProductionYear,
+      };
+      return sortMap[sortField] || ItemSortBy.SortName;
+    };
+
+    const getJellyfinSortOrder = (order: string) => {
+      return order === 'desc' ? SortOrder.Descending : SortOrder.Ascending;
+    };
+
+    const { data } = await getItemsApi(api).getItems({
+      userId: user.Id,
+      parentId: libraryId,
+      includeItemTypes: [BaseItemKind.Movie, BaseItemKind.Series],
+      recursive: true,
+      sortBy: sortBy ? [getJellyfinSortBy(sortBy)] : [ItemSortBy.SortName],
+      sortOrder: sortOrder ? [getJellyfinSortOrder(sortOrder)] : [SortOrder.Ascending],
+      searchTerm: searchQuery || undefined,
+      limit,
+      startIndex,
+      fields: [
+        ItemFields.CanDelete,
+        ItemFields.PrimaryImageAspectRatio,
+        ItemFields.Overview,
+        ItemFields.DateCreated,
+      ],
+    });
+
+    return data.Items || [];
+  } catch (error) {
+    console.error("Failed to fetch library items page:", error);
+
+    // If it's an authentication error, throw an error with a special flag
+    if (isAuthError(error)) {
+      const authError = new Error(
+        "Authentication expired. Please sign in again."
+      );
+      (authError as any).isAuthError = true;
+      throw authError;
+    }
+
+    return [];
+  }
+}
+
 export async function fetchSimilarItems(itemId: string, limit: number = 12) {
   try {
     const { serverUrl, user } = await getAuthData();

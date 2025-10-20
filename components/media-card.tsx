@@ -263,7 +263,7 @@ export function MediaCard({
           {isPlayed ? (
             <button
               onClick={handleMarkAsUnplayed}
-              className="bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-full p-1.5 transition-all duration-200 hover:scale-105"
+              className="bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-full p-1.5 transition-all duration-200 hover:scale-105 cursor-pointer"
               title="Mark as unplayed"
             >
               <EyeOff className="h-4 w-4 text-white" />
@@ -271,7 +271,7 @@ export function MediaCard({
           ) : (
             <button
               onClick={handleMarkAsPlayed}
-              className="bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-full p-1.5 transition-all duration-200 hover:scale-105"
+              className="bg-black/50 hover:bg-black/70 backdrop-blur-sm rounded-full p-1.5 transition-all duration-200 hover:scale-105 cursor-pointer"
               title="Mark as played"
             >
               <Eye className="h-4 w-4 text-white" />

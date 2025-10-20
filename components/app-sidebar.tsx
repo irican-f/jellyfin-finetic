@@ -173,7 +173,7 @@ export function AppSidebar({
               <DropdownMenu>
                 <SidebarMenuItem>
                   <DropdownMenuTrigger asChild>
-                    <SidebarMenuButton className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground">
+                    <SidebarMenuButton className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground cursor-pointer">
                       <Library className="h-4 w-4" />
                       <span>Libraries</span>
                       <ChevronRight className="ml-auto h-4 w-4" />
