@@ -5,33 +5,33 @@ import { redirect } from "next/navigation";
 import { SystemApi } from "@jellyfin/sdk/lib/generated-client/api/system-api";
 import { Configuration } from "@jellyfin/sdk/lib/generated-client/configuration";
 import { UserDto } from "@jellyfin/sdk/lib/generated-client/models/user-dto";
-import { createJellyfinInstance } from "@/lib/utils";
+import { createJellyfinInstance } from "@/lib/server-utils";
 
 // Type aliases for easier use
 type JellyfinUserWithToken = UserDto & { AccessToken?: string };
 
 // Function to get or create a unique device ID for fallback auth
 async function getDeviceId(): Promise<string> {
-    const cookieStore = await cookies();
-    const existingDeviceId = cookieStore.get("jellyfin-device-id");
+  const cookieStore = await cookies();
+  const existingDeviceId = cookieStore.get("jellyfin-device-id");
 
-    if (existingDeviceId?.value) {
-        return existingDeviceId.value;
-    }
+  if (existingDeviceId?.value) {
+    return existingDeviceId.value;
+  }
 
-    const headersList = await headers();
-    const userAgent = headersList.get("user-agent") || "";
-    const deviceId = Buffer.from(`${userAgent}|${Date.now()}`).toString("base64").replace(/=/g, "1");
+  const headersList = await headers();
+  const userAgent = headersList.get("user-agent") || "";
+  const deviceId = Buffer.from(`${userAgent}|${Date.now()}`).toString("base64").replace(/=/g, "1");
 
-    // Save device ID to separate cookie
-    cookieStore.set("jellyfin-device-id", deviceId, {
-        path: "/",
-        maxAge: 60 * 60 * 24 * 365, // 1 year
-        sameSite: "lax",
-        secure: process.env.NODE_ENV === "production",
-    });
+  // Save device ID to separate cookie
+  cookieStore.set("jellyfin-device-id", deviceId, {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365, // 1 year
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
 
-    return deviceId;
+  return deviceId;
 }
 
 export async function setServerUrl(url: string) {
@@ -113,7 +113,7 @@ export async function authenticateUser(
 
   // First try with the SDK
   try {
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
 
     // Log the request details for debugging
@@ -134,6 +134,8 @@ export async function authenticateUser(
       hasUser: !!result.User,
       userId: result.User?.Id,
     });
+
+    await getDeviceId();
 
     if (result.AccessToken) {
       const userWithToken = { ...result.User, AccessToken: result.AccessToken };

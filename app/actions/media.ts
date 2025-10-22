@@ -14,7 +14,7 @@ import { LibraryApi } from "@jellyfin/sdk/lib/generated-client/api/library-api";
 import { getItemsApi } from "@jellyfin/sdk/lib/utils/api/items-api";
 import { getLibraryApi } from "@jellyfin/sdk/lib/utils/api/library-api";
 import { getGenresApi } from "@jellyfin/sdk/lib/utils/api/genres-api";
-import { createJellyfinInstance } from "@/lib/utils";
+import { createJellyfinInstance } from "@/lib/server-utils";
 
 // Type aliases for easier use
 type JellyfinItem = BaseItemDto;
@@ -70,7 +70,7 @@ export async function fetchMovies(
 ): Promise<JellyfinItem[]> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -114,7 +114,7 @@ export async function fetchTVShows(
 ): Promise<JellyfinItem[]> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -156,7 +156,7 @@ export async function fetchMediaDetails(
 ): Promise<JellyfinItem | null> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -188,7 +188,7 @@ export async function fetchPersonDetails(
 ): Promise<JellyfinItem | null> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -220,7 +220,7 @@ export async function fetchPersonFilmography(
 ): Promise<JellyfinItem[]> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -260,7 +260,7 @@ export async function fetchPersonFilmography(
 export async function fetchResumeItems() {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
 
     api.accessToken = user.AccessToken;
@@ -292,7 +292,7 @@ export async function reportPlaybackStart(
 ): Promise<boolean> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -328,7 +328,7 @@ export async function reportPlaybackProgress(
 ): Promise<boolean> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -363,7 +363,7 @@ export async function reportPlaybackStopped(
 ): Promise<boolean> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -396,7 +396,7 @@ export async function fetchLibraryItems(
 ): Promise<{ items: JellyfinItem[]; totalRecordCount: number }> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -450,7 +450,7 @@ export async function fetchLibraryItemsPage(
 ): Promise<JellyfinItem[]> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -511,7 +511,7 @@ export async function fetchLibraryItemsPage(
 export async function fetchSimilarItems(itemId: string, limit: number = 12) {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -545,7 +545,7 @@ export async function fetchIntroOutro(
 ): Promise<MediaSegmentsResponse | null> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -625,7 +625,7 @@ export async function scanLibrary(libraryId?: string): Promise<void> {
 export async function fetchGenres() {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -653,7 +653,7 @@ export async function fetchGenres() {
 export async function fetchGenre(genreName: string) {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -685,7 +685,7 @@ export async function fetchRecentlyAddedItems(
 ): Promise<JellyfinItem[]> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 

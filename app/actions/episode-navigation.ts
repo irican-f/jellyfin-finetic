@@ -8,7 +8,7 @@ import { ItemFields } from "@jellyfin/sdk/lib/generated-client/models/item-field
 import { ItemSortBy } from "@jellyfin/sdk/lib/generated-client/models/item-sort-by";
 import { SortOrder } from "@jellyfin/sdk/lib/generated-client/models/sort-order";
 import { getItemsApi } from "@jellyfin/sdk/lib/utils/api/items-api";
-import { createJellyfinInstance } from "@/lib/utils";
+import { createJellyfinInstance } from "@/lib/server-utils";
 import { fetchMediaDetails } from "./media";
 
 // Type aliases for easier use
@@ -30,7 +30,7 @@ async function getAuthData() {
 export async function getNextEpisode(currentEpisodeId: string): Promise<JellyfinItem | null> {
     try {
         const { serverUrl, user } = await getAuthData();
-        const jellyfinInstance = createJellyfinInstance();
+        const jellyfinInstance = await createJellyfinInstance();
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 
@@ -79,7 +79,7 @@ export async function getNextEpisode(currentEpisodeId: string): Promise<Jellyfin
 export async function getPreviousEpisode(currentEpisodeId: string): Promise<JellyfinItem | null> {
     try {
         const { serverUrl, user } = await getAuthData();
-        const jellyfinInstance = createJellyfinInstance();
+        const jellyfinInstance = await createJellyfinInstance();
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 

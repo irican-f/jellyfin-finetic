@@ -16,12 +16,13 @@ interface UseAuthReturn extends AuthState {
   logout: () => void;
   refreshAuthData: () => void;
   isTokenExpired: () => boolean;
+  getDeviceId: () => string;
 }
 
 // Helper function to get cookie value
 function getCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
-  
+
   const value = `; ${document.cookie}`;
   const parts = value.split(`; ${name}=`);
   if (parts.length === 2) {
@@ -44,7 +45,7 @@ function parseAuthData(): {
 
     const decoded = decodeURIComponent(authCookie);
     const authData = JSON.parse(decoded);
-    
+
     return {
       serverUrl: authData.serverUrl || null,
       user: authData.user || null,
@@ -92,20 +93,20 @@ export function useAuth(): UseAuthReturn {
 
   const login = useCallback((serverUrl: string, user: JellyfinUserWithToken) => {
     const timestamp = Date.now();
-    
+
     // Set cookies
     const authData = JSON.stringify({
       serverUrl,
       user,
       timestamp,
     });
-    
+
     const maxAge = 60 * 60 * 24 * 30; // 30 days
     const cookieOptions = `path=/; max-age=${maxAge}; samesite=lax${process.env.NODE_ENV === 'production' ? '; secure' : ''}`;
-    
+
     document.cookie = `jellyfin-auth=${encodeURIComponent(authData)}; ${cookieOptions}`;
     document.cookie = `jellyfin-server-url=${encodeURIComponent(serverUrl)}; ${cookieOptions}`;
-    
+
     // Update state
     setAuthState({
       serverUrl,
@@ -120,7 +121,7 @@ export function useAuth(): UseAuthReturn {
     // Clear cookies
     document.cookie = 'jellyfin-auth=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
     document.cookie = 'jellyfin-server-url=; path=/; expires=Thu, 01 Jan 1970 00:00:01 GMT;';
-    
+
     // Update state
     setAuthState({
       serverUrl: null,
@@ -129,14 +130,14 @@ export function useAuth(): UseAuthReturn {
       isAuthenticated: false,
       isLoading: false,
     });
-    
+
     // Redirect to login
     window.location.href = '/login';
   }, []);
 
   const isTokenExpired = useCallback((): boolean => {
     if (!authState.timestamp) return true;
-    
+
     // Check if token is older than 30 days
     const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
     return Date.now() - authState.timestamp > thirtyDaysMs;
@@ -159,7 +160,7 @@ export function useAuth(): UseAuthReturn {
     const checkCookieChanges = () => {
       const currentAuth = parseAuthData();
       const currentServerUrl = getServerUrl();
-      
+
       if (
         currentAuth.serverUrl !== authState.serverUrl ||
         currentAuth.user?.Id !== authState.user?.Id ||
@@ -171,14 +172,19 @@ export function useAuth(): UseAuthReturn {
 
     // Check for cookie changes every 5 seconds
     const interval = setInterval(checkCookieChanges, 5000);
-    
+
     window.addEventListener('storage', handleStorageChange);
-    
+
     return () => {
       window.removeEventListener('storage', handleStorageChange);
       clearInterval(interval);
     };
   }, [refreshAuthData, authState.serverUrl, authState.user?.Id, authState.timestamp]);
+
+  // Get device ID from cookie
+  const getDeviceId = useCallback(() => {
+    return getCookie('jellyfin-device-id') || 'web';
+  }, []);
 
   return {
     ...authState,
@@ -186,5 +192,6 @@ export function useAuth(): UseAuthReturn {
     logout,
     refreshAuthData,
     isTokenExpired,
+    getDeviceId,
   };
 }

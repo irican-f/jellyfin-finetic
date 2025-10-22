@@ -25,6 +25,7 @@ import {
     MoreVertical,
     Eye,
     EyeOff,
+    Users,
 } from "lucide-react";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
 import { toast } from "sonner";
@@ -32,6 +33,7 @@ import { getDownloadUrl } from "@/app/actions/utils";
 import { markItemAsPlayed, markItemAsUnplayed, removeFromNextUp } from "@/app/actions/playback";
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { useSyncPlay } from "@/contexts/SyncPlayContext";
 
 interface MediaContextualActionsProps {
     item: BaseItemDto;
@@ -71,6 +73,9 @@ export function MediaContextualActions({
     const { playMedia, setIsPlayerVisible } = useMediaPlayer();
     const router = useRouter();
     const [isPlayed, setIsPlayed] = useState(item.UserData?.Played || false);
+
+    // SyncPlay integration
+    const { currentGroup, isEnabled: isSyncPlayEnabled, queueItems } = useSyncPlay();
 
     // Update isPlayed state when item changes
     useEffect(() => {
@@ -197,6 +202,21 @@ export function MediaContextualActions({
         }
     };
 
+    const handleAddToSyncPlayQueue = async () => {
+        if (!isSyncPlayEnabled || !currentGroup) {
+            toast.error("You must be in a SyncPlay group to queue items");
+            return;
+        }
+
+        try {
+            await queueItems([item.Id!]);
+            toast.success(`Added "${item.Name}" to SyncPlay queue`);
+        } catch (error) {
+            console.error('Failed to add to SyncPlay queue:', error);
+            toast.error("Failed to add to SyncPlay queue");
+        }
+    };
+
     const handleMarkAsPlayed = async () => {
         try {
             await markItemAsPlayed(item.Id!);
@@ -290,6 +310,15 @@ export function MediaContextualActions({
                     <Plus className="h-4 w-4" />
                     Add to Playlist
                 </DropdownMenuItem>
+                {isSyncPlayEnabled && currentGroup && (
+                    <DropdownMenuItem
+                        onClick={handleAddToSyncPlayQueue}
+                        className="cursor-pointer"
+                    >
+                        <Users className="h-4 w-4" />
+                        Add to SyncPlay Queue
+                    </DropdownMenuItem>
+                )}
                 <DropdownMenuSeparator />
 
                 {/* File and Stream Operations */}

@@ -3,7 +3,7 @@
 import { cookies } from "next/headers";
 import { UserLibraryApi } from "@jellyfin/sdk/lib/generated-client/api/user-library-api";
 import { getUserViewsApi } from "@jellyfin/sdk/lib/utils/api/user-views-api";
-import { createJellyfinInstance } from "@/lib/utils";
+import { createJellyfinInstance } from "@/lib/server-utils";
 import { getSystemApi } from "@jellyfin/sdk/lib/utils/api/system-api";
 import { LogFile } from "@jellyfin/sdk/lib/generated-client/models";
 import { getOptimalStreamingParams } from "@/lib/device-detection";
@@ -266,7 +266,7 @@ export async function getSubtitleTracks(
     }>
 > {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -310,7 +310,7 @@ export async function getSubtitleTracks(
 export async function getUserLibraries(): Promise<any[]> {
     try {
         const { serverUrl, user } = await getAuthData();
-        const jellyfinInstance = createJellyfinInstance();
+        const jellyfinInstance = await createJellyfinInstance();
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 
@@ -335,7 +335,7 @@ export async function getUserLibraries(): Promise<any[]> {
 export async function getLibraryById(libraryId: string): Promise<any | null> {
     try {
         const { serverUrl, user } = await getAuthData();
-        const jellyfinInstance = createJellyfinInstance();
+        const jellyfinInstance = await createJellyfinInstance();
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 
@@ -607,7 +607,7 @@ export interface JellyfinLog {
 
 export async function fetchJellyfinLogs(): Promise<LogFile[]> {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -624,7 +624,7 @@ export async function fetchJellyfinLogs(): Promise<LogFile[]> {
 
 export async function fetchLogContent(logName: string): Promise<string> {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 

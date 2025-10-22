@@ -1,5 +1,6 @@
 import { atom } from "jotai";
 import { MediaSourceInfo } from "@/types/jellyfin";
+import { GroupInfoDto } from '@jellyfin/sdk/lib/generated-client';
 
 // AI Ask state
 export const isAIAskOpenAtom = atom(false);
@@ -58,13 +59,13 @@ export const skipToTimestampAtom = atom(null, (get, set, timestamp: number) => {
 // Aurora background colors with transition support
 export const auroraColorsAtom = atom<string[]>([
   "#AA5CC3",
-  "#00A4DC", 
+  "#00A4DC",
   "#AA5CC3"
 ]);
 
 export const previousAuroraColorsAtom = atom<string[]>([
   "#AA5CC3",
-  "#00A4DC", 
+  "#00A4DC",
   "#AA5CC3"
 ]);
 
@@ -77,3 +78,19 @@ export const updateAuroraColorsAtom = atom(
     set(auroraColorsAtom, newColors);
   }
 );
+
+// SyncPlay state - custom interface for our needs
+export interface SyncPlayGroup {
+  GroupId?: string;
+  GroupName?: string;
+  State?: string;
+  Participants?: string[];
+  PlayingItemId?: string;
+  PositionTicks?: number;
+  IsPaused: boolean;
+  LastUpdatedAt?: string;
+}
+
+export const currentSyncPlayGroupAtom = atom<SyncPlayGroup | null>(null);
+export const isSyncPlayEnabledAtom = atom(false);
+export const syncPlayConnectionStatusAtom = atom<'connected' | 'disconnected' | 'connecting'>('disconnected');

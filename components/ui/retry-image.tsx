@@ -41,21 +41,14 @@ export function RetryImage({
     };
 
     const handleError = useCallback(() => {
-        console.log('Image error - currentUrlIndex:', currentUrlIndex, 'fallbackUrls.length:', fallbackUrls.length, 'retryCount:', retryCount);
-        console.log('Current URL:', getCurrentUrl());
-        console.log('Fallback URLs:', fallbackUrls);
-
         // First try fallback URLs (different image types)
         if (currentUrlIndex < fallbackUrls.length) {
-            console.log('Trying fallback URL:', fallbackUrls[currentUrlIndex]);
             setCurrentUrlIndex(prev => prev + 1);
             setRetryCount(0); // Reset retry count for new URL
         } else if (retryCount < maxRetries) {
             // Then retry current URL (same image type, different attempt)
-            console.log('Retrying current URL');
             setRetryCount(prev => prev + 1);
         } else {
-            console.log('All attempts failed');
             setHasError(true);
             onError?.();
         }

@@ -13,7 +13,7 @@ import { ItemFilter } from "@jellyfin/sdk/lib/generated-client/models/item-filte
 import { getItemsApi } from "@jellyfin/sdk/lib/utils/api/items-api";
 import { getTvShowsApi } from "@jellyfin/sdk/lib/utils/api/tv-shows-api";
 import { ImageType } from "@jellyfin/sdk/lib/generated-client/models/image-type";
-import { createJellyfinInstance } from "@/lib/utils";
+import { createJellyfinInstance } from "@/lib/server-utils";
 
 // Type aliases for easier use
 type JellyfinItem = BaseItemDto;
@@ -34,7 +34,7 @@ async function getAuthData() {
 
 export async function fetchSeasons(tvShowId: string): Promise<JellyfinItem[]> {
   const { serverUrl, user } = await getAuthData();
-  const jellyfinInstance = createJellyfinInstance();
+  const jellyfinInstance = await createJellyfinInstance();
   const api = jellyfinInstance.createApi(serverUrl);
   api.accessToken = user.AccessToken;
 
@@ -57,7 +57,7 @@ export async function fetchSeasons(tvShowId: string): Promise<JellyfinItem[]> {
 
 export async function fetchEpisodes(seasonId: string): Promise<JellyfinItem[]> {
   const { serverUrl, user } = await getAuthData();
-  const jellyfinInstance = createJellyfinInstance();
+  const jellyfinInstance = await createJellyfinInstance();
   const api = jellyfinInstance.createApi(serverUrl);
   api.accessToken = user.AccessToken;
 
@@ -86,7 +86,7 @@ export async function fetchEpisodes(seasonId: string): Promise<JellyfinItem[]> {
 
 export async function fetchTVShowDetails(tvShowId: string): Promise<JellyfinItem | null> {
   const { serverUrl, user } = await getAuthData();
-  const jellyfinInstance = createJellyfinInstance();
+  const jellyfinInstance = await createJellyfinInstance();
   const api = jellyfinInstance.createApi(serverUrl);
   api.accessToken = user.AccessToken;
 
@@ -105,7 +105,7 @@ export async function fetchTVShowDetails(tvShowId: string): Promise<JellyfinItem
 
 export async function fetchEpisodeDetails(episodeId: string): Promise<JellyfinItem | null> {
   const { serverUrl, user } = await getAuthData();
-  const jellyfinInstance = createJellyfinInstance();
+  const jellyfinInstance = await createJellyfinInstance();
   const api = jellyfinInstance.createApi(serverUrl);
   api.accessToken = user.AccessToken;
 
@@ -124,7 +124,7 @@ export async function fetchEpisodeDetails(episodeId: string): Promise<JellyfinIt
 
 export async function getNextEpisodeForSeries(seriesId: string): Promise<JellyfinItem | null> {
   const { serverUrl, user } = await getAuthData();
-  const jellyfinInstance = createJellyfinInstance();
+  const jellyfinInstance = await createJellyfinInstance();
   const api = jellyfinInstance.createApi(serverUrl);
   api.accessToken = user.AccessToken;
 
@@ -182,7 +182,7 @@ export async function getNextEpisodeForSeries(seriesId: string): Promise<Jellyfi
 
 export async function fetchEpisodesForCurrentSeason(episodeId: string): Promise<JellyfinItem[]> {
   const { serverUrl, user } = await getAuthData();
-  const jellyfinInstance = createJellyfinInstance();
+  const jellyfinInstance = await createJellyfinInstance();
   const api = jellyfinInstance.createApi(serverUrl);
   api.accessToken = user.AccessToken;
 
@@ -243,7 +243,7 @@ export async function fetchEpisodesForCurrentSeason(episodeId: string): Promise<
 export async function fetchNextUpItems(limit: number = 24): Promise<JellyfinItem[]> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 

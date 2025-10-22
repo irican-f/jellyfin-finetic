@@ -4,6 +4,7 @@ import { ThemeProvider } from "next-themes";
 import "./globals.css";
 import { SidebarInset } from "@/components/ui/sidebar";
 import { SettingsProvider } from "@/contexts/settings-context";
+import { SyncPlayProvider } from "@/contexts/SyncPlayContext";
 import { Toaster } from "sonner";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -25,8 +26,8 @@ const poppins = Poppins({
 });
 
 export const metadata: Metadata = {
-  title: "Finetic",
-  description: "A modern web client for Jellyfin",
+  title: "Ciné Maktep",
+  description: "Le cinéma by la team Maktep",
 };
 
 export default function RootLayout({
@@ -46,7 +47,11 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <SettingsProvider>{children}</SettingsProvider>
+          <SettingsProvider>
+            <SyncPlayProvider>
+              {children}
+            </SyncPlayProvider>
+          </SettingsProvider>
           <Toaster />
         </ThemeProvider>
         <Analytics />

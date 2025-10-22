@@ -7,7 +7,7 @@ import { PersonsApi } from "@jellyfin/sdk/lib/generated-client/api/persons-api";
 import { BaseItemDto } from "@jellyfin/sdk/lib/generated-client/models/base-item-dto";
 import { BaseItemKind } from "@jellyfin/sdk/lib/generated-client/models/base-item-kind";
 import { ItemFields } from "@jellyfin/sdk/lib/generated-client/models/item-fields";
-import { createJellyfinInstance } from "@/lib/utils";
+import { createJellyfinInstance } from "@/lib/server-utils";
 
 // Type aliases for easier use
 type JellyfinItem = BaseItemDto;
@@ -30,7 +30,7 @@ export async function searchItems(query: string): Promise<JellyfinItem[]> {
 
   if (!query.trim()) return [];
 
-  const jellyfinInstance = createJellyfinInstance();
+  const jellyfinInstance = await createJellyfinInstance();
   const api = jellyfinInstance.createApi(serverUrl);
   api.accessToken = user.AccessToken;
 
@@ -95,7 +95,7 @@ export async function searchPeople(query: string): Promise<JellyfinItem[]> {
 
   if (!query.trim()) return [];
 
-  const jellyfinInstance = createJellyfinInstance();
+  const jellyfinInstance = await createJellyfinInstance();
   const api = jellyfinInstance.createApi(serverUrl);
   api.accessToken = user.AccessToken;
 

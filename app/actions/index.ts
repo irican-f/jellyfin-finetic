@@ -62,6 +62,22 @@ export {
   getUserWithPolicy,
 } from './utils';
 
+// SyncPlay actions
+export {
+  getSyncPlayGroups,
+  createSyncPlayGroup,
+  joinSyncPlayGroup,
+  leaveSyncPlayGroup,
+  syncPlayPause,
+  syncPlayUnpause,
+  syncPlayStop,
+  syncPlaySeek,
+  syncPlayBuffering,
+  syncPlayReady,
+  syncPlayQueue,
+  syncPlaySetNewQueue,
+} from './syncplay';
+
 // Types
 export type {
   RemoteImage,
@@ -70,3 +86,11 @@ export type {
   UserPolicy,
   UserWithPolicy,
 } from './utils';
+
+export type {
+  BufferRequestDto,
+  ReadyRequestDto,
+  SeekRequestDto,
+  NewGroupRequestDto,
+  JoinGroupRequestDto,
+} from './syncplay';

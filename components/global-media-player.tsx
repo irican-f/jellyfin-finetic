@@ -59,6 +59,7 @@ import {
 import { ProgressiveBlur } from "@/components/motion-primitives/progressive-blur";
 import { useAuth } from "@/hooks/useAuth";
 import { useSettings, BITRATE_OPTIONS } from "@/contexts/settings-context";
+import { useSyncPlay } from "@/contexts/SyncPlayContext";
 import {
     detectDevice,
     getDeviceName,
@@ -87,6 +88,19 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     } = useMediaPlayer();
     const { videoBitrate, preferredAudioLanguage, preferredSubtitleLanguage } =
         useSettings();
+
+    // SyncPlay integration
+    const {
+        currentGroup,
+        isEnabled: isSyncPlayEnabled,
+        requestPause,
+        requestUnpause,
+        requestStop,
+        requestSeek,
+        sendPlaystateUpdate,
+        sendProgressUpdate,
+        sendReadyState,
+    } = useSyncPlay();
 
     const [streamUrl, setStreamUrl] = useState<string | null>(null);
     const [mediaDetails, setMediaDetails] = useState<JellyfinItem | null>(null);
@@ -306,12 +320,21 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     }, [playSessionId, currentMedia, selectedVersion]);
 
     // Handle video events
-    const handleVideoPlay = useCallback(() => {
+    const handleVideoPlay = useCallback(async () => {
         setVideoStarted(true); // Mark that video has started playing
         if (!hasStartedPlayback) {
             startProgressTracking();
         }
-    }, [hasStartedPlayback, startProgressTracking]);
+
+        // SyncPlay integration - notify group of play
+        if (isSyncPlayEnabled && currentGroup) {
+            try {
+                await requestUnpause();
+            } catch (error) {
+                console.error('Failed to sync play with group:', error);
+            }
+        }
+    }, [hasStartedPlayback, startProgressTracking, isSyncPlayEnabled, currentGroup, requestUnpause]);
 
     const handleVideoPause = useCallback(async () => {
         if (playSessionId && currentMedia && selectedVersion && videoRef.current) {
@@ -326,7 +349,16 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 true // isPaused = true
             );
         }
-    }, [playSessionId, currentMedia, selectedVersion]);
+
+        // SyncPlay integration - notify group of pause
+        if (isSyncPlayEnabled && currentGroup) {
+            try {
+                await requestPause();
+            } catch (error) {
+                console.error('Failed to sync pause with group:', error);
+            }
+        }
+    }, [playSessionId, currentMedia, selectedVersion, isSyncPlayEnabled, currentGroup, requestPause]);
 
     // Handle video time updates
     const handleTimeUpdate = useCallback(() => {
@@ -334,8 +366,20 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             const time = videoRef.current.currentTime;
             setCurrentTime(time);
             setCurrentTimestamp(time); // Update context with current time
+
+            // SyncPlay integration - send periodic playstate updates
+            if (isSyncPlayEnabled && currentGroup && currentMedia) {
+                const positionTicks = secondsToTicks(time);
+                const isPaused = videoRef.current.paused;
+
+                // Send playstate update via WebSocket (throttled)
+                sendPlaystateUpdate(positionTicks, isPaused);
+
+                // Send progress update for current item
+                sendProgressUpdate(currentMedia.id, positionTicks);
+            }
         }
-    }, [setCurrentTimestamp]);
+    }, [setCurrentTimestamp, isSyncPlayEnabled, currentGroup, currentMedia, sendPlaystateUpdate, sendProgressUpdate]);
 
     // Handle duration change
     const handleDurationChange = useCallback(() => {
@@ -353,7 +397,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     }, [mediaDetails, convertJellyfinChapters]);
 
     // Set video to resume position if provided
-    const handleVideoLoadedMetadata = useCallback(() => {
+    const handleVideoLoadedMetadata = useCallback(async () => {
         if (videoRef.current) {
             setDuration(videoRef.current.duration);
 
@@ -368,8 +412,20 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 // Only start playing after we've set the correct position
                 videoRef.current.play();
             }
+
+            // SyncPlay integration - send ready state when media is loaded
+            if (isSyncPlayEnabled && currentGroup && currentMedia) {
+                try {
+                    const currentTime = videoRef.current.currentTime;
+                    const positionTicks = secondsToTicks(currentTime);
+                    await sendReadyState(true, positionTicks);
+                    console.log('✅ SyncPlay ready state sent for media:', currentMedia.name);
+                } catch (error) {
+                    console.error('Failed to send SyncPlay ready state:', error);
+                }
+            }
         }
-    }, [currentMedia, seekToTime]);
+    }, [currentMedia, seekToTime, isSyncPlayEnabled, currentGroup, sendReadyState]);
 
     // Helper function to clean up blob URLs
     const cleanupBlobUrls = useCallback(() => {
@@ -1186,14 +1242,32 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                             transition={{ duration: 0.3 }}
                         >
                             <MediaPlayerControls className="flex-col items-start gap-2.5 px-6 pb-4 z-[9999]">
-                                <Button
-                                    variant="ghost"
-                                    className="fixed left-4 top-4 z-10 hover:backdrop-blur-md"
-                                    onClick={handleClose}
-                                >
-                                    <ArrowLeft className="h-4 w-4" />
-                                    Go Back
-                                </Button>
+                                <div className="flex items-center justify-between w-full">
+                                    <Button
+                                        variant="ghost"
+                                        className="hover:backdrop-blur-md"
+                                        onClick={handleClose}
+                                    >
+                                        <ArrowLeft className="h-4 w-4" />
+                                        Go Back
+                                    </Button>
+
+                                    {/* SyncPlay indicator */}
+                                    {isSyncPlayEnabled && currentGroup && (
+                                        <div className="flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-lg px-3 py-1.5">
+                                            <Users className="h-4 w-4 text-white" />
+                                            <span className="text-sm text-white font-medium">
+                                                {currentGroup.GroupName}
+                                            </span>
+                                            <div className="flex items-center gap-1">
+                                                <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                                                <span className="text-xs text-white/70">
+                                                    {currentGroup.Participants?.length || 0}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
 
                                 {/* Fetching subtitles indicator */}
                                 {fetchingSubtitles && (

@@ -45,6 +45,7 @@ import {
   BarChart3,
   MoreHorizontal,
   ChevronRight,
+  Users,
 } from "lucide-react";
 import {
   Select,
@@ -54,6 +55,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useSettings, BITRATE_OPTIONS } from "@/contexts/settings-context";
+import { SyncPlayDialog } from "@/components/syncplay-dialog";
 
 interface JellyfinLibrary {
   Id: string;
@@ -77,6 +79,7 @@ export function AppSidebar({
   const [serverUrl, setServerUrl] = useState<string | null>(null);
   const [libraries, setLibraries] = useState<JellyfinLibrary[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [showSyncPlayDialog, setShowSyncPlayDialog] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -216,6 +219,12 @@ export function AppSidebar({
                   </Link>
                 </SidebarMenuButton>
               </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton onClick={() => setShowSyncPlayDialog(true)}>
+                  <Users className="h-4 w-4" />
+                  <span>SyncPlay</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
@@ -282,6 +291,10 @@ export function AppSidebar({
         </SidebarMenu>
       </SidebarFooter>
       <SidebarRail />
+      <SyncPlayDialog
+        open={showSyncPlayDialog}
+        onOpenChange={setShowSyncPlayDialog}
+      />
     </Sidebar>
   );
 }

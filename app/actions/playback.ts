@@ -2,7 +2,7 @@
 import { getPlaystateApi } from "@jellyfin/sdk/lib/utils/api/playstate-api";
 import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
-import { createJellyfinInstance } from "@/lib/utils";
+import { createJellyfinInstance } from "@/lib/server-utils";
 import { MediaInfoApiGetPlaybackInfoRequest, MediaInfoApiGetPostedPlaybackInfoRequest, PlaybackInfoResponse } from "@jellyfin/sdk/lib/generated-client";
 import { getMediaInfoApi } from "@jellyfin/sdk/lib/utils/api";
 
@@ -22,7 +22,7 @@ async function getAuthData() {
 export async function markItemAsPlayed(itemId: string): Promise<void> {
     try {
         const { serverUrl, user } = await getAuthData();
-        const jellyfinInstance = createJellyfinInstance();
+        const jellyfinInstance = await createJellyfinInstance();
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 
@@ -44,7 +44,7 @@ export async function markItemAsPlayed(itemId: string): Promise<void> {
 export async function markItemAsUnplayed(itemId: string): Promise<void> {
     try {
         const { serverUrl, user } = await getAuthData();
-        const jellyfinInstance = createJellyfinInstance();
+        const jellyfinInstance = await createJellyfinInstance();
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 
@@ -64,7 +64,7 @@ export async function markItemAsUnplayed(itemId: string): Promise<void> {
 export async function removeFromNextUp(seriesId: string): Promise<void> {
     try {
         const { serverUrl, user } = await getAuthData();
-        const jellyfinInstance = createJellyfinInstance();
+        const jellyfinInstance = await createJellyfinInstance();
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 

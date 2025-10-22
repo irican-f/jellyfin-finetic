@@ -1,28 +1,8 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
-import { Jellyfin } from "@jellyfin/sdk";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
-}
-
-// Function to get or create a unique device ID
-function getDeviceId(): string {
-  return crypto.randomUUID();
-}
-
-// Create Jellyfin SDK instance with unique device ID
-export function createJellyfinInstance() {
-  return new Jellyfin({
-    clientInfo: {
-      name: "Finetic",
-      version: "1.0.0",
-    },
-    deviceInfo: {
-      name: "Finetic Web Client",
-      id: getDeviceId(),
-    },
-  });
 }
 
 export const getMediaDetailsFromName = (name: string) => {
@@ -92,7 +72,7 @@ export const convertToWebVTT = (trackEvents: { TrackEvents: { Id: string; Text: 
 // Convert timestamp string (HH:MM:SS or MM:SS) to seconds
 export const convertTimestampToSeconds = (timestamp: string): number => {
   const parts = timestamp.split(':');
-  
+
   if (parts.length === 2) {
     // MM:SS format
     const minutes = parseInt(parts[0], 10);
@@ -105,7 +85,7 @@ export const convertTimestampToSeconds = (timestamp: string): number => {
     const seconds = parseFloat(parts[2]);
     return hours * 3600 + minutes * 60 + seconds;
   }
-  
+
   // If format is not recognized, try to parse as float (assume it's already in seconds)
   const parsed = parseFloat(timestamp);
   return isNaN(parsed) ? 0 : parsed;
@@ -117,7 +97,7 @@ export const formatPlaybackPosition = (ticks: number): string => {
   const hours = Math.floor(totalSeconds / 3600);
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
-  
+
   if (hours > 0) {
     return `${hours}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
   }

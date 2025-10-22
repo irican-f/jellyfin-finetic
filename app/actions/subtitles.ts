@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { UserLibraryApi } from "@jellyfin/sdk/lib/generated-client/api/user-library-api";
-import { createJellyfinInstance } from "@/lib/utils";
+import { createJellyfinInstance } from "@/lib/server-utils";
 
 // Helper function to get auth data from cookies
 export async function getAuthData() {
@@ -39,7 +39,7 @@ function formatTimestamp(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
   const minutes = Math.floor((seconds % 3600) / 60);
   const secs = Math.floor(seconds % 60);
-  
+
   if (hours > 0) {
     return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   } else {
@@ -52,7 +52,7 @@ function parseJsonSubtitles(jsonContent: string): SubtitleEntry[] {
   try {
     const data = JSON.parse(jsonContent);
     const trackEvents = data.TrackEvents || [];
-    
+
     return trackEvents.map((event: any) => {
       const timestampSeconds = ticksToSeconds(event.StartPositionTicks);
       return {
@@ -74,7 +74,7 @@ export async function getSubtitleContent(
 ): Promise<SubtitleContentResult> {
   try {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -88,7 +88,7 @@ export async function getSubtitleContent(
     const mediaSource = item.MediaSources?.find(
       (ms) => ms.Id === mediaSourceId
     );
-    
+
     if (!mediaSource) {
       return {
         success: false,
@@ -118,14 +118,14 @@ export async function getSubtitleContent(
     }
 
     const subtitleStream = subtitleStreams[subtitleIndex];
-    
+
     // Fetch the subtitle content in JSON format
     const subtitleUrl = `${serverUrl}/Videos/${itemId}/${mediaSourceId}/Subtitles/${subtitleStream.Index}/Stream.js?api_key=${user.AccessToken}`;
-    
+
     console.log("Fetching subtitles from:", subtitleUrl);
-    
+
     const response = await fetch(subtitleUrl);
-    
+
     if (!response.ok) {
       return {
         success: false,
@@ -133,20 +133,20 @@ export async function getSubtitleContent(
         error: `Failed to fetch subtitles: ${response.status} ${response.statusText}`,
       };
     }
-    
+
     const jsonContent = await response.text();
     console.log("JSON Content length:", jsonContent.length);
-    
+
     // Parse all subtitle entries
     const subtitles = parseJsonSubtitles(jsonContent);
-    
+
     console.log(`Parsed ${subtitles.length} subtitle entries`);
-    
+
     return {
       success: true,
       subtitles: subtitles,
     };
-    
+
   } catch (error) {
     console.error("Failed to search subtitle content:", error);
     return {
