@@ -49,6 +49,28 @@ export const playMediaAtom = atom(null, (get, set, media: MediaToPlay) => {
   set(isPlayerVisibleAtom, true);
 });
 
+// SyncPlay command atoms
+export const syncPlayCommandAtom = atom<{
+  type: 'pause' | 'unpause' | 'seek' | 'stop';
+  positionTicks?: number;
+} | null>(null);
+
+// SyncPlay command dispatcher
+export const dispatchSyncPlayCommandAtom = atom(
+  null,
+  (get, set, command: { type: 'pause' | 'unpause' | 'seek' | 'stop'; positionTicks?: number }) => {
+    set(syncPlayCommandAtom, command);
+  }
+);
+
+// Clear SyncPlay command
+export const clearSyncPlayCommandAtom = atom(
+  null,
+  (get, set) => {
+    set(syncPlayCommandAtom, null);
+  }
+);
+
 // Derived atom for skipping to timestamp
 export const skipToTimestampAtom = atom(null, (get, set, timestamp: number) => {
   set(skipTimestampAtom, timestamp);

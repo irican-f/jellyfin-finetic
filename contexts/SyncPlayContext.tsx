@@ -6,7 +6,8 @@ import {
     currentSyncPlayGroupAtom,
     isSyncPlayEnabledAtom, MediaToPlay,
     syncPlayConnectionStatusAtom,
-    SyncPlayGroup
+    SyncPlayGroup,
+    dispatchSyncPlayCommandAtom
 } from '@/lib/atoms';
 import {
     getSyncPlayGroups,
@@ -137,6 +138,8 @@ interface SyncPlayContextType {
     requestUnpause: () => void;
     requestStop: () => void;
     requestSeek: (positionTicks: number) => void;
+    requestBuffering: (isBuffering: boolean, positionTicks: number) => Promise<void>;
+    requestReady: (isReady: boolean, positionTicks: number) => Promise<void>;
     queueItems: (itemIds: string[], mode?: string) => Promise<void>;
     setNewQueue: (itemIds: string[], startPosition?: number) => Promise<void>;
 
@@ -155,10 +158,18 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
     const [currentGroup, setCurrentGroup] = useAtom(currentSyncPlayGroupAtom);
     const [isEnabled, setIsEnabled] = useAtom(isSyncPlayEnabledAtom);
     const [connectionStatus, setConnectionStatus] = useAtom(syncPlayConnectionStatusAtom);
+    const [, dispatchSyncPlayCommand] = useAtom(dispatchSyncPlayCommandAtom);
 
     const [availableGroups, setAvailableGroups] = useState<GroupInfoDto[]>([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+    const [isProcessingSyncPlayUpdate, setIsProcessingSyncPlayUpdate] = useState(false);
+    const [lastSyncPlayCommand, setLastSyncPlayCommand] = useState<{
+        when: string;
+        positionTicks: number;
+        command: string;
+        playlistItemId: string;
+    } | null>(null);
 
     // Queue state
     const [currentPlaylist, setCurrentPlaylist] = useState<SyncPlayPlaylistItem[]>([]);
@@ -170,6 +181,7 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
     const playstateUpdateIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const isConnectingRef = useRef<boolean>(false);
     const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+    const currentPlayingItemRef = useRef<string | null>(null);
 
     // WebSocket message sending functions - matching Jellyfin API client pattern
     const sendWebSocketMessage = useCallback((messageType: string, data?: any) => {
@@ -305,11 +317,79 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
     }, [clearKeepAlive]);
 
 
+    // Check if command is duplicate and handle state correction
+    const isDuplicateCommand = useCallback((command: any): boolean => {
+        if (!lastSyncPlayCommand) return false;
+
+        return (
+            lastSyncPlayCommand.when === command.When &&
+            lastSyncPlayCommand.positionTicks === command.PositionTicks &&
+            lastSyncPlayCommand.command === command.Command &&
+            lastSyncPlayCommand.playlistItemId === command.PlaylistItemId
+        );
+    }, [lastSyncPlayCommand]);
+
+    // Handle duplicate command by checking current state and correcting if needed
+    const handleDuplicateCommand = useCallback(async (command: any) => {
+        console.log('🔄 Duplicate SyncPlay command detected, checking state...', command);
+
+        const currentTime = new Date();
+        const commandTime = new Date(command.When);
+
+        if (commandTime > currentTime) {
+            console.log('⏰ Command is scheduled for future, ignoring duplicate');
+            return true; // Command already scheduled
+        }
+
+        // Check if we need to correct the state based on the command
+        // For now, we'll re-apply the command to ensure state consistency
+        // In a more sophisticated implementation, we would check the actual media player state
+        console.log('🔄 Re-applying duplicate command for state correction');
+
+        // Apply the command directly to ensure state consistency
+        switch (command.Command) {
+            case 'Unpause':
+                if (!isPlaying) {
+                    console.log('🔄 Correcting state: should be playing');
+                    setIsPlaying(true);
+                    dispatchSyncPlayCommand({
+                        type: 'unpause',
+                        positionTicks: command.PositionTicks
+                    });
+                }
+                break;
+            case 'Pause':
+                if (isPlaying) {
+                    console.log('🔄 Correcting state: should be paused');
+                    setIsPlaying(false);
+                    dispatchSyncPlayCommand({
+                        type: 'pause',
+                        positionTicks: command.PositionTicks
+                    });
+                }
+                break;
+            case 'Stop':
+                if (isPlaying) {
+                    console.log('🔄 Correcting state: should be stopped');
+                    setIsPlaying(false);
+                    dispatchSyncPlayCommand({ type: 'stop' });
+                }
+                break;
+            case 'Seek':
+                console.log('🔄 Correcting state: seeking to position');
+                dispatchSyncPlayCommand({
+                    type: 'seek',
+                    positionTicks: command.PositionTicks
+                });
+                break;
+        }
+
+        return true; // Skip normal processing since we handled it here
+    }, [isPlaying, setIsPlaying, dispatchSyncPlayCommand]);
+
     // WebSocket message handlers - matching Jellyfin API client pattern
     const handleWebSocketMessage = useCallback(async (message: WebSocketMessage) => {
-        console.log('📨 Received WebSocket message:', message);
-        console.log('Message type:', message.MessageType);
-        console.log('Message data:', message.Data);
+        console.log('📨 Received WebSocket message:', JSON.stringify(message));
 
         // Handle message ID deduplication like Jellyfin client
         const messageId = message.MessageId;
@@ -342,9 +422,6 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
             const groupUpdate = message as SyncPlayGroupUpdateMessage;
             const updateType = groupUpdate.Data.Type;
             const data = groupUpdate.Data.Data;
-
-            console.log('Update type:', updateType);
-            console.log('Data:', data);
 
             switch (updateType) {
                 case 'GroupJoined':
@@ -394,44 +471,93 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
                     break;
 
                 case 'PlayQueue':
-
                     if (typeof data === 'object' && data !== null) {
                         const playlistData = data as any;
+                        const reason = playlistData.Reason;
 
+                        console.log('🎵 PlayQueue update reason:', reason);
+
+                        // Set flag to prevent command loops
+                        setIsProcessingSyncPlayUpdate(true);
+
+                        // Get the new playlist item ID before updating state
+                        const newPlaylistItemId = playlistData.Playlist?.[playlistData.PlayingItemIndex]?.PlaylistItemId || null;
 
                         // Update playlist state
                         setCurrentPlaylist(playlistData.Playlist || []);
-                        setCurrentPlaylistItemId(playlistData.Playlist?.[playlistData.PlayingItemIndex]?.PlaylistItemId || null);
+                        setCurrentPlaylistItemId(newPlaylistItemId);
                         setIsPlaying(playlistData.IsPlaying || false);
 
-                        // If there's a playing item, launch the media player
+                        // Handle based on reason
                         if (playlistData.Playlist && playlistData.Playlist.length > 0) {
                             const playingItem = playlistData.Playlist[playlistData.PlayingItemIndex];
 
                             if (playingItem) {
-                                const mediaDetails = await fetchMediaDetails(playingItem.ItemId)
+                                if (reason === 'NewPlaylist') {
+                                    // New playlist - always start playing
+                                    console.log('🆕 New playlist started');
 
-                                // Create media object for the player
-                                const mediaToPlay = {
-                                    id: mediaDetails?.Id,
-                                    name: mediaDetails?.Name || 'SyncPlay Item', // We'll need to fetch the actual name
-                                    type: mediaDetails?.Type, // We'll need to determine the actual type
-                                    resumePositionTicks: playlistData.StartPositionTicks || 0
-                                } as MediaToPlay;
+                                    const mediaDetails = await fetchMediaDetails(playingItem.ItemId)
 
-                                console.log('🎮 Media to play:', mediaToPlay);
+                                    // Create media object for the player
+                                    const mediaToPlay = {
+                                        id: mediaDetails?.Id,
+                                        name: mediaDetails?.Name || 'SyncPlay Item',
+                                        type: mediaDetails?.Type,
+                                        resumePositionTicks: playlistData.StartPositionTicks || 0
+                                    } as MediaToPlay;
 
-                                playMedia(mediaToPlay);
+                                    console.log('🎮 Media to play:', playlistData.Playlist?.[playlistData.PlayingItemIndex]?.PlaylistItemId);
 
-                                // Show toast notification
-                                toast.info('New playlist started', {
-                                    description: 'SyncPlay group is now playing',
-                                });
+                                    // Update ref immediately to prevent duplicate processing
+                                    currentPlayingItemRef.current = newPlaylistItemId;
+
+                                    playMedia(mediaToPlay);
+
+                                    // Show toast notification
+                                    toast.info('New playlist started', {
+                                        description: 'SyncPlay group is now playing',
+                                    });
+                                } else if (reason === 'SetCurrentItem') {
+                                    // Current item changed - check if it's different
+                                    const isAlreadyPlaying = currentPlayingItemRef.current === newPlaylistItemId;
+
+                                    if (!isAlreadyPlaying) {
+                                        console.log('🔄 Current item changed');
+
+                                        const mediaDetails = await fetchMediaDetails(playingItem.ItemId)
+
+                                        // Create media object for the player
+                                        const mediaToPlay = {
+                                            id: mediaDetails?.Id,
+                                            name: mediaDetails?.Name || 'SyncPlay Item',
+                                            type: mediaDetails?.Type,
+                                            resumePositionTicks: playlistData.StartPositionTicks || 0
+                                        } as MediaToPlay;
+
+                                        console.log('🎮 Media to play:', playlistData.Playlist?.[playlistData.PlayingItemIndex]?.PlaylistItemId);
+
+                                        // Update ref immediately to prevent duplicate processing
+                                        currentPlayingItemRef.current = newPlaylistItemId;
+
+                                        playMedia(mediaToPlay);
+
+                                        // Show toast notification
+                                        toast.info('Item changed', {
+                                            description: 'SyncPlay group switched to new item',
+                                        });
+                                    } else {
+                                        console.log('🎵 Item already playing, skipping media player restart');
+                                    }
+                                } else {
+                                    console.log('⚠️ Unknown PlayQueue reason:', reason);
+                                }
                             } else {
                                 console.log('⚠️ No playing item found in playlist');
                             }
                         } else {
                             console.log('⚠️ No playlist or empty playlist received');
+                            currentPlayingItemRef.current = null;
                         }
                     }
                     break;
@@ -472,29 +598,57 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
             console.log('Position:', command.Data.PositionTicks);
             console.log('When:', command.Data.When);
 
+            // Check for duplicate command
+            if (isDuplicateCommand(command.Data)) {
+                const shouldSkip = await handleDuplicateCommand(command.Data);
+                if (shouldSkip) {
+                    console.log('⏭️ Skipping duplicate command');
+                    return;
+                }
+            }
+
+            // Store command for duplicate detection
+            setLastSyncPlayCommand({
+                when: command.Data.When,
+                positionTicks: command.Data.PositionTicks,
+                command: command.Data.Command,
+                playlistItemId: command.Data.PlaylistItemId
+            });
+
             // Apply the command to local player
             switch (command.Data.Command) {
                 case 'Unpause':
                     console.log('▶️ SyncPlay Unpause command received');
+                    console.log('Position:', command.Data.PositionTicks);
                     setIsPlaying(true);
-                    // TODO: Trigger local player unpause
+                    dispatchSyncPlayCommand({
+                        type: 'unpause',
+                        positionTicks: command.Data.PositionTicks
+                    });
                     break;
 
                 case 'Pause':
                     console.log('⏸️ SyncPlay Pause command received');
+                    console.log('Position:', command.Data.PositionTicks);
                     setIsPlaying(false);
-                    // TODO: Trigger local player pause
+                    dispatchSyncPlayCommand({
+                        type: 'pause',
+                        positionTicks: command.Data.PositionTicks
+                    });
                     break;
 
                 case 'Seek':
                     console.log('⏩ SyncPlay Seek command received');
-                    // TODO: Trigger local player seek to command.Data.PositionTicks
+                    dispatchSyncPlayCommand({
+                        type: 'seek',
+                        positionTicks: command.Data.PositionTicks
+                    });
                     break;
 
                 case 'Stop':
                     console.log('⏹️ SyncPlay Stop command received');
                     setIsPlaying(false);
-                    // TODO: Trigger local player stop
+                    dispatchSyncPlayCommand({ type: 'stop' });
                     break;
 
                 default:
@@ -580,6 +734,7 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
             await leaveSyncPlayGroup();
             setCurrentGroup(null);
             setIsEnabled(false);
+            currentPlayingItemRef.current = null;
             console.log('Leaving group - disconnecting WebSocket');
             disconnect();
         } catch (error) {
@@ -595,48 +750,75 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
     }, [setCurrentGroup, setIsEnabled, disconnect]);
 
     // Send SyncPlay command via WebSocket
-    const sendSyncPlayCommand = useCallback((command: SendCommand) => {
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-            const message = {
-                MessageId: crypto.randomUUID().replace(/-/g, ''),
-                MessageType: 'SyncPlayCommand',
-                Data: {
-                    GroupId: currentGroup?.GroupId || '',
-                    PlaylistItemId: '00000000000000000000000000000000',
-                    When: command.When || new Date().toISOString(),
-                    PositionTicks: command.PositionTicks || 0,
-                    Command: command.Type,
-                    EmittedAt: new Date().toISOString()
-                }
-            };
-            console.log('Sending SyncPlay command:', command.Type);
-            wsRef.current.send(JSON.stringify(message));
-        } else {
-            console.error('WebSocket not connected, cannot send command');
-            setError('Not connected to SyncPlay group');
-        }
-    }, [currentGroup]);
+    const sendSyncPlayCommand = useCallback((command: SendCommand, skipLog = false) => {
+        // if (wsRef.current?.readyState === WebSocket.OPEN) {
+        //     const message = {
+        //         MessageId: crypto.randomUUID().replace(/-/g, ''),
+        //         MessageType: 'SyncPlayCommand',
+        //         Data: {
+        //             GroupId: currentGroup?.GroupId || '',
+        //             PlaylistItemId: currentPlaylistItemId || '00000000000000000000000000000000',
+        //             When: command.When || new Date().toISOString(),
+        //             PositionTicks: command.PositionTicks || 0,
+        //             Command: command.Type,
+        //             EmittedAt: new Date().toISOString()
+        //         }
+        //     };
+        //     if (!skipLog) {
+        //         console.log('Sending SyncPlay command:', command.Type, 'for playlist item:', currentPlaylistItemId);
+        //     }
+        //     wsRef.current.send(JSON.stringify(message));
+        // } else {
+        //     console.error('WebSocket not connected, cannot send command');
+        //     setError('Not connected to SyncPlay group');
+        // }
+    }, [currentGroup, currentPlaylistItemId]);
 
     // Playback control functions - now using WebSocket commands
     const requestPause = useCallback(() => {
-        sendSyncPlayCommand({ Type: 'Pause' });
-    }, [sendSyncPlayCommand]);
+        if (!isProcessingSyncPlayUpdate) {
+            sendSyncPlayCommand({ Type: 'Pause' });
+        }
+    }, [sendSyncPlayCommand, isProcessingSyncPlayUpdate]);
 
     const requestUnpause = useCallback(() => {
-        sendSyncPlayCommand({ Type: 'Unpause' });
-    }, [sendSyncPlayCommand]);
+        if (!isProcessingSyncPlayUpdate) {
+            sendSyncPlayCommand({ Type: 'Unpause' });
+        }
+    }, [sendSyncPlayCommand, isProcessingSyncPlayUpdate]);
 
     const requestStop = useCallback(() => {
         sendSyncPlayCommand({ Type: 'Stop' });
     }, [sendSyncPlayCommand]);
 
     const requestSeek = useCallback((positionTicks: number) => {
-        sendSyncPlayCommand({
-            Type: 'Seek',
-            PositionTicks: positionTicks,
-            When: new Date().toISOString()
-        });
-    }, [sendSyncPlayCommand]);
+        if (!isProcessingSyncPlayUpdate) {
+            sendSyncPlayCommand({
+                Type: 'Seek',
+                PositionTicks: positionTicks,
+                When: new Date().toISOString()
+            });
+        }
+    }, [sendSyncPlayCommand, isProcessingSyncPlayUpdate]);
+
+    // SyncPlay buffering and ready state functions
+    const requestBuffering = useCallback(async (isBuffering: boolean, positionTicks: number) => {
+        try {
+            await syncPlayBuffering(isBuffering, positionTicks);
+            console.log('🔄 SyncPlay buffering state sent:', { isBuffering, positionTicks });
+        } catch (error) {
+            console.error('Failed to send buffering state:', error);
+        }
+    }, []);
+
+    const requestReady = useCallback(async (isReady: boolean, positionTicks: number) => {
+        try {
+            await syncPlayReady(isReady, positionTicks);
+            console.log('✅ SyncPlay ready state sent:', { isReady, positionTicks });
+        } catch (error) {
+            console.error('Failed to send ready state:', error);
+        }
+    }, []);
 
     const queueItems = useCallback(async (itemIds: string[], mode: string = "QueueNext") => {
         try {
@@ -735,6 +917,8 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
         requestUnpause,
         requestStop,
         requestSeek,
+        requestBuffering,
+        requestReady,
         queueItems,
         setNewQueue,
 

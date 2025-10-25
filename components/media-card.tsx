@@ -368,7 +368,10 @@ export function MediaCard({
             <div className="grid gap-2">
               <div className="grid grid-cols-3 items-center gap-4">
                 <div className="text-sm text-muted-foreground col-span-3">
-                  {parse(DOMPurify.sanitize(item.Overview))}
+                  {typeof window !== 'undefined'
+                    ? parse(DOMPurify.sanitize(item.Overview))
+                    : item.Overview
+                  }
                 </div>
               </div>
             </div>

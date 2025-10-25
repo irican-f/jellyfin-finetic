@@ -2,7 +2,7 @@
 
 import { cookies } from "next/headers";
 import { createJellyfinInstance } from "@/lib/server-utils";
-import { GroupInfoDto, QueueRequestDto as SDKQueueRequestDto } from "@jellyfin/sdk/lib/generated-client";
+import { GroupInfoDto, QueueRequestDto, BufferRequestDto, SeekRequestDto, ReadyRequestDto, NewGroupRequestDto, JoinGroupRequestDto, GroupQueueMode } from "@jellyfin/sdk/lib/generated-client";
 import { getSyncPlayApi } from "@jellyfin/sdk/lib/utils/api";
 
 // Helper function to get auth data from cookies
@@ -18,32 +18,6 @@ async function getAuthData() {
     return { serverUrl: parsed.serverUrl, user: parsed.user };
 }
 
-// Note: Types are imported directly from SDK in components that need them
-
-export interface BufferRequestDto {
-    When: string;
-    PositionTicks: number;
-}
-
-export interface ReadyRequestDto {
-    When: string;
-    PositionTicks: number;
-}
-
-export interface SeekRequestDto {
-    PositionTicks: number;
-}
-
-// Use SDK type instead of custom interface
-
-export interface NewGroupRequestDto {
-    GroupName: string;
-}
-
-export interface JoinGroupRequestDto {
-    GroupId: string;
-}
-
 // REST API Functions
 
 export async function getSyncPlayGroups(): Promise<GroupInfoDto[]> {
@@ -54,8 +28,6 @@ export async function getSyncPlayGroups(): Promise<GroupInfoDto[]> {
         api.accessToken = user.AccessToken;
 
         const response = await getSyncPlayApi(api).syncPlayGetGroups();
-
-        console.log("SyncPlay groups:", response.data);
 
         return response.data;
     } catch (error) {
@@ -240,16 +212,16 @@ export async function syncPlayReady(isReady: boolean, positionTicks: number): Pr
     }
 }
 
-export async function syncPlayQueue(itemIds: string[], mode: string = "QueueNext"): Promise<void> {
+export async function syncPlayQueue(itemIds: string[], mode: GroupQueueMode = "QueueNext"): Promise<void> {
     try {
         const { serverUrl, user } = await getAuthData();
         const jellyfinInstance = await createJellyfinInstance();
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 
-        const requestBody: SDKQueueRequestDto = {
+        const requestBody: QueueRequestDto = {
             ItemIds: itemIds,
-            Mode: mode as any, // Type assertion for compatibility
+            Mode: mode,
         };
 
         await getSyncPlayApi(api).syncPlayQueue({ queueRequestDto: requestBody });

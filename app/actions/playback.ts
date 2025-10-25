@@ -151,7 +151,7 @@ export async function getPlaybackInfo(
     itemId: string,
 ): Promise<PlaybackInfoResponse> {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 
@@ -175,7 +175,7 @@ export async function postPlaybackInfo(
     itemId: string,
 ): Promise<PlaybackInfoResponse> {
     const { serverUrl, user } = await getAuthData();
-    const jellyfinInstance = createJellyfinInstance();
+    const jellyfinInstance = await createJellyfinInstance();
     const api = jellyfinInstance.createApi(serverUrl);
     api.accessToken = user.AccessToken;
 

@@ -236,7 +236,7 @@ export async function getPlaybackUrl(
         throw new Error("No media sources available in playback info");
     }
 
-    console.log("Server-validated playback info:", playbackInfo);
+    // console.log("Server-validated playback info:", playbackInfo);
 
     if (directPlay) {
         // Audio track selection during direct play is handled by the client-side player, not the URL.
@@ -298,7 +298,7 @@ export async function getSubtitleTracks(
             };
         });
 
-        console.log("Subtitle tracks:", subtitleTracks);
+        // console.log("Subtitle tracks:", subtitleTracks);
 
         return subtitleTracks;
     } catch (error) {

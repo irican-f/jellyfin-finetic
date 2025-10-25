@@ -85,6 +85,8 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         setCurrentMediaWithSource,
         setCurrentTimestamp,
         playMedia,
+        syncPlayCommand,
+        clearSyncPlayCommand,
     } = useMediaPlayer();
     const { videoBitrate, preferredAudioLanguage, preferredSubtitleLanguage } =
         useSettings();
@@ -97,6 +99,8 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         requestUnpause,
         requestStop,
         requestSeek,
+        requestBuffering,
+        requestReady,
         sendPlaystateUpdate,
         sendProgressUpdate,
         sendReadyState,
@@ -330,6 +334,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         if (isSyncPlayEnabled && currentGroup) {
             try {
                 await requestUnpause();
+                console.log('▶️ SyncPlay unpause request sent');
             } catch (error) {
                 console.error('Failed to sync play with group:', error);
             }
@@ -354,11 +359,48 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         if (isSyncPlayEnabled && currentGroup) {
             try {
                 await requestPause();
+                console.log('⏸️ SyncPlay pause request sent');
             } catch (error) {
                 console.error('Failed to sync pause with group:', error);
             }
         }
     }, [playSessionId, currentMedia, selectedVersion, isSyncPlayEnabled, currentGroup, requestPause]);
+
+    // Handle video seek events
+    const handleVideoSeeked = useCallback(async () => {
+        if (videoRef.current && isSyncPlayEnabled && currentGroup) {
+            const currentTime = videoRef.current.currentTime;
+            const positionTicks = secondsToTicks(currentTime);
+
+            // Check if this was a SyncPlay seek command
+            if (syncPlaySeekRef.current) {
+                const { positionTicks: syncPlayPositionTicks, timestamp } = syncPlaySeekRef.current;
+                const timeSinceSeek = Date.now() - timestamp;
+
+                // Only handle if this seek was recent (within 1 second) and matches our SyncPlay seek
+                if (timeSinceSeek < 1000 && Math.abs(positionTicks - syncPlayPositionTicks) < 1000000) { // 1 second tolerance in ticks
+                    console.log('✅ SyncPlay seek completed - sending ready state');
+                    try {
+                        await requestReady(true, positionTicks);
+                        console.log('✅ SyncPlay seek complete - ready state sent');
+                    } catch (error) {
+                        console.error('Failed to send ready state after SyncPlay seek:', error);
+                    }
+                    // Clear the ref
+                    syncPlaySeekRef.current = null;
+                    return;
+                }
+            }
+
+            // This was a user-initiated seek, send seek request to group
+            try {
+                await requestSeek(positionTicks);
+                console.log('⏩ SyncPlay seek request sent to:', currentTime);
+            } catch (error) {
+                console.error('Failed to sync seek with group:', error);
+            }
+        }
+    }, [isSyncPlayEnabled, currentGroup, requestSeek, requestReady]);
 
     // Handle video time updates
     const handleTimeUpdate = useCallback(() => {
@@ -404,13 +446,18 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             if (seekToTime !== null) {
                 videoRef.current.currentTime = seekToTime;
                 setSeekToTime(null);
-                videoRef.current.play();
+                // Only auto-play if SyncPlay is not enabled
+                if (!isSyncPlayEnabled) {
+                    videoRef.current.play();
+                }
             } else if (currentMedia?.resumePositionTicks) {
                 const resumeTime = ticksToSeconds(currentMedia.resumePositionTicks);
                 videoRef.current.currentTime = resumeTime;
                 setCurrentTime(resumeTime);
-                // Only start playing after we've set the correct position
-                videoRef.current.play();
+                // Only start playing after we've set the correct position if SyncPlay is not enabled
+                if (!isSyncPlayEnabled) {
+                    videoRef.current.play();
+                }
             }
 
             // SyncPlay integration - send ready state when media is loaded
@@ -426,6 +473,132 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             }
         }
     }, [currentMedia, seekToTime, isSyncPlayEnabled, currentGroup, sendReadyState]);
+
+    // Handle video buffering events for SyncPlay
+    const handleVideoWaiting = useCallback(async () => {
+        if (isSyncPlayEnabled && videoRef.current && currentGroup && currentMedia) {
+            const currentTime = videoRef.current.currentTime;
+            const positionTicks = secondsToTicks(currentTime);
+            await requestBuffering(true, positionTicks);
+            console.log('🔄 Video buffering - SyncPlay buffering state sent');
+        }
+    }, [isSyncPlayEnabled, currentGroup, currentMedia, requestBuffering]);
+
+    const handleVideoCanPlay = useCallback(async () => {
+        if (isSyncPlayEnabled && videoRef.current && currentGroup && currentMedia) {
+            const currentTime = videoRef.current.currentTime;
+            const positionTicks = secondsToTicks(currentTime);
+            await requestReady(true, positionTicks);
+            console.log('✅ Video can play - SyncPlay ready state sent');
+        }
+    }, [isSyncPlayEnabled, currentGroup, currentMedia, requestReady]);
+
+    // SyncPlay command handlers - called from SyncPlay context
+    const handleSyncPlayPause = useCallback((positionTicks?: number) => {
+        if (videoRef.current) {
+            // Sync position if provided and different from current position
+            if (positionTicks !== undefined) {
+                const targetTime = ticksToSeconds(positionTicks);
+                const currentTime = videoRef.current.currentTime;
+                const timeDifference = Math.abs(targetTime - currentTime);
+
+                // Only seek if the difference is significant (more than 0.5 seconds)
+                if (timeDifference > 0.5) {
+                    videoRef.current.currentTime = targetTime;
+                    setCurrentTime(targetTime);
+                    console.log(`⏸️ SyncPlay pause with position sync: ${currentTime}s → ${targetTime}s`);
+                } else {
+                    console.log('⏸️ SyncPlay pause - position already synchronized');
+                }
+            }
+
+            if (!videoRef.current.paused) {
+                videoRef.current.pause();
+                console.log('⏸️ SyncPlay pause command executed');
+            }
+        }
+    }, []);
+
+    const handleSyncPlayUnpause = useCallback((positionTicks?: number) => {
+        if (videoRef.current) {
+            // Sync position if provided and different from current position
+            if (positionTicks !== undefined) {
+                const targetTime = ticksToSeconds(positionTicks);
+                const currentTime = videoRef.current.currentTime;
+                const timeDifference = Math.abs(targetTime - currentTime);
+
+                // Only seek if the difference is significant (more than 0.5 seconds)
+                if (timeDifference > 0.5) {
+                    videoRef.current.currentTime = targetTime;
+                    setCurrentTime(targetTime);
+                    console.log(`▶️ SyncPlay unpause with position sync: ${currentTime}s → ${targetTime}s`);
+                } else {
+                    console.log('▶️ SyncPlay unpause - position already synchronized');
+                }
+            }
+
+            if (videoRef.current.paused) {
+                videoRef.current.play();
+                console.log('▶️ SyncPlay unpause command executed');
+            }
+        }
+    }, []);
+
+    // Track if the last seek was from SyncPlay to handle ready state properly
+    const syncPlaySeekRef = useRef<{ positionTicks: number; timestamp: number } | null>(null);
+
+    const handleSyncPlaySeek = useCallback(async (positionTicks: number) => {
+        if (videoRef.current) {
+            const seekTime = ticksToSeconds(positionTicks);
+            videoRef.current.currentTime = seekTime;
+            setCurrentTime(seekTime);
+            console.log('⏩ SyncPlay seek command executed to:', seekTime);
+
+            // Mark this as a SyncPlay seek so we can handle the ready state in onSeeked
+            syncPlaySeekRef.current = {
+                positionTicks,
+                timestamp: Date.now()
+            };
+        }
+    }, []);
+
+    const handleSyncPlayStop = useCallback(() => {
+        if (videoRef.current) {
+            videoRef.current.pause();
+            videoRef.current.currentTime = 0;
+            setCurrentTime(0);
+            console.log('⏹️ SyncPlay stop command executed');
+        }
+    }, []);
+
+    // Handle SyncPlay commands from atom
+    useEffect(() => {
+        if (syncPlayCommand) {
+            console.log('🎮 Processing SyncPlay command:', syncPlayCommand);
+
+            switch (syncPlayCommand.type) {
+                case 'pause':
+                    handleSyncPlayPause(syncPlayCommand.positionTicks);
+                    break;
+                case 'unpause':
+                    handleSyncPlayUnpause(syncPlayCommand.positionTicks);
+                    break;
+                case 'seek':
+                    if (syncPlayCommand.positionTicks !== undefined) {
+                        handleSyncPlaySeek(syncPlayCommand.positionTicks);
+                    }
+                    break;
+                case 'stop':
+                    handleSyncPlayStop();
+                    break;
+                default:
+                    console.log('Unknown SyncPlay command type:', syncPlayCommand.type);
+            }
+
+            // Clear the command after processing
+            clearSyncPlayCommand();
+        }
+    }, [syncPlayCommand, handleSyncPlayPause, handleSyncPlayUnpause, handleSyncPlaySeek, handleSyncPlayStop, clearSyncPlayCommand]);
 
     // Helper function to clean up blob URLs
     const cleanupBlobUrls = useCallback(() => {
@@ -847,6 +1020,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         } catch (error) {
             console.error("Failed to load media:", error);
         } finally {
+            console.log("Setting loading to false");
             setLoading(false);
         }
     };
@@ -1011,12 +1185,15 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                             crossOrigin=""
                             playsInline
                             preload="auto"
-                            autoPlay={!currentMedia?.resumePositionTicks}
+                            autoPlay={!currentMedia?.resumePositionTicks && !isSyncPlayEnabled}
                             className="h-screen bg-black w-screen"
                             onPlay={handleVideoPlay}
                             onPause={handleVideoPause}
                             onEnded={handleVideoEnded}
                             onLoadedMetadata={handleVideoLoadedMetadata}
+                            onWaiting={handleVideoWaiting}
+                            onCanPlay={handleVideoCanPlay}
+                            onSeeked={handleVideoSeeked}
                             onTimeUpdate={handleTimeUpdate}
                             onDurationChange={handleDurationChange}
                             onError={(event) => {
@@ -1026,8 +1203,20 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                     </MediaPlayerVideo>
                 )}
 
+                {/* Persistent Go Back Button - always visible when video is playing */}
+                {streamUrl && mediaDetails && (
+                    <Button
+                        variant="ghost"
+                        className="fixed left-4 top-4 z-10 hover:backdrop-blur-md"
+                        onClick={handleClose}
+                    >
+                        <ArrowLeft className="h-4 w-4" />
+                        Go Back
+                    </Button>
+                )}
+
                 {/* Loading overlay - shown while loading or before video starts */}
-                {(loading || !streamUrl || !mediaDetails || !videoStarted) && (
+                {(loading || !streamUrl || !mediaDetails) && (
                     <div className="fixed inset-0 bg-black z-[1000000]">
                         {/* Go Back Button - visible during loading */}
                         <Button
@@ -1243,15 +1432,6 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                         >
                             <MediaPlayerControls className="flex-col items-start gap-2.5 px-6 pb-4 z-[9999]">
                                 <div className="flex items-center justify-between w-full">
-                                    <Button
-                                        variant="ghost"
-                                        className="hover:backdrop-blur-md"
-                                        onClick={handleClose}
-                                    >
-                                        <ArrowLeft className="h-4 w-4" />
-                                        Go Back
-                                    </Button>
-
                                     {/* SyncPlay indicator */}
                                     {isSyncPlayEnabled && currentGroup && (
                                         <div className="flex items-center gap-2 bg-black/50 backdrop-blur-sm rounded-lg px-3 py-1.5">

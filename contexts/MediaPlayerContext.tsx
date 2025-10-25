@@ -7,6 +7,8 @@ import {
   skipToTimestampAtom,
   currentTimestampAtom,
   playMediaAtom,
+  syncPlayCommandAtom,
+  clearSyncPlayCommandAtom,
   MediaToPlay,
   CurrentMediaWithSource,
 } from "@/lib/atoms";
@@ -21,6 +23,8 @@ export function useMediaPlayer() {
   const [currentTimestamp, setCurrentTimestamp] = useAtom(currentTimestampAtom);
   const [, playMedia] = useAtom(playMediaAtom);
   const [, skipToTimestamp] = useAtom(skipToTimestampAtom);
+  const [syncPlayCommand] = useAtom(syncPlayCommandAtom);
+  const [, clearSyncPlayCommand] = useAtom(clearSyncPlayCommandAtom);
 
   return {
     isPlayerVisible,
@@ -33,6 +37,8 @@ export function useMediaPlayer() {
     skipTimestamp,
     currentTimestamp,
     setCurrentTimestamp,
+    syncPlayCommand,
+    clearSyncPlayCommand,
   };
 }
 
