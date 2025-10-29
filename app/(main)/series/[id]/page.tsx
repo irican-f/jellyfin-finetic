@@ -83,7 +83,7 @@ export default async function Show({
           </div>
 
           {/* Search bar positioned over backdrop */}
-          <div className="absolute top-8 left-0 right-0 z-20 px-6">
+          <div className="absolute top-8 left-0 right-0 z-20 px-6 flex justify-center">
             <SearchBar />
           </div>
         </div>
@@ -162,14 +162,16 @@ export default async function Show({
                 </div>
                 <MediaActions movie={show} />
 
-                {show.Taglines && show.Taglines.length > 0 && show.Taglines[0] && (
-                  <TextScramble
-                    className="text-lg text-muted-foreground mb-4 max-w-4xl text-center md:text-left font-poppins drop-shadow-md"
-                    duration={1.2}
-                  >
-                    {show.Taglines[0]}
-                  </TextScramble>
-                )}
+                {show.Taglines &&
+                  show.Taglines.length > 0 &&
+                  show.Taglines[0] && (
+                    <TextScramble
+                      className="text-lg text-muted-foreground mb-4 max-w-4xl text-center md:text-left font-poppins drop-shadow-md"
+                      duration={1.2}
+                    >
+                      {show.Taglines[0]}
+                    </TextScramble>
+                  )}
 
                 <p className="text-md leading-relaxed mb-6 max-w-4xl">
                   {show.Overview}

@@ -48,13 +48,19 @@ export default async function PersonPage({
     };
 
     // Helper function to calculate age
-    const calculateAge = (birthDate: string | null | undefined, deathDate?: string | null | undefined) => {
+    const calculateAge = (
+      birthDate: string | null | undefined,
+      deathDate?: string | null | undefined
+    ) => {
       if (!birthDate) return null;
       const birth = new Date(birthDate);
       const end = deathDate ? new Date(deathDate) : new Date();
       const age = end.getFullYear() - birth.getFullYear();
       const monthDiff = end.getMonth() - birth.getMonth();
-      if (monthDiff < 0 || (monthDiff === 0 && end.getDate() < birth.getDate())) {
+      if (
+        monthDiff < 0 ||
+        (monthDiff === 0 && end.getDate() < birth.getDate())
+      ) {
         return age - 1;
       }
       return age;
@@ -88,7 +94,7 @@ export default async function PersonPage({
         {/* Backdrop section */}
         <div className="relative">
           {/* Search bar positioned over backdrop */}
-          <div className="absolute top-8 left-0 right-0 z-20 px-6">
+          <div className="absolute top-8 left-0 right-0 z-20 px-6 flex justify-center">
             <SearchBar />
           </div>
         </div>
@@ -123,7 +129,10 @@ export default async function PersonPage({
                     <div className="flex items-center gap-2 text-sm">
                       <Calendar className="w-4 h-4 text-muted-foreground" />
                       <span className="text-muted-foreground">Born:</span>
-                      <span>{formatDate(person.PremiereDate)} (age {calculateAge(person.PremiereDate, person.EndDate)})</span>
+                      <span>
+                        {formatDate(person.PremiereDate)} (age{" "}
+                        {calculateAge(person.PremiereDate, person.EndDate)})
+                      </span>
                     </div>
                   )}
                   {person.EndDate && (
@@ -147,8 +156,8 @@ export default async function PersonPage({
 
                 {/* Biography */}
                 {person.Overview && (
-                  <BiographySection 
-                    biography={person.Overview} 
+                  <BiographySection
+                    biography={person.Overview}
                     personName={person.Name || undefined}
                   />
                 )}
@@ -183,7 +192,9 @@ export default async function PersonPage({
           {/* Filmography Section */}
           {filmography.length > 0 && (
             <div className="mt-10">
-              <h3 className="text-3xl font-semibold mb-8 font-poppins">Filmography</h3>
+              <h3 className="text-3xl font-semibold mb-8 font-poppins">
+                Filmography
+              </h3>
               <div className="flex flex-wrap gap-4 justify-center md:justify-start">
                 {filmography.map((item) => (
                   <MediaCard key={item.Id} item={item} serverUrl={serverUrl} />

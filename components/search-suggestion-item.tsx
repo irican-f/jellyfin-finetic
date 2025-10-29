@@ -23,6 +23,7 @@ interface Item {
   IndexNumber?: number;
   SeriesName?: string;
   Overview?: string;
+  ParentId?: string;
 }
 
 interface SearchSuggestionItemProps {
@@ -44,7 +45,8 @@ export function SearchSuggestionItem({
 
   // Get blur hash
   const imageTag = item.ImageTags?.Primary;
-  const blurHash = imageTag && item.ImageBlurHashes?.Primary?.[imageTag] || "";
+  const blurHash =
+    (imageTag && item.ImageBlurHashes?.Primary?.[imageTag]) || "";
 
   // Decode blur hash
   useEffect(() => {
@@ -164,10 +166,15 @@ export function SearchSuggestionItem({
               <Film className="h-3 w-3 mr-0.5 text-blue-400" />
               Movie
             </Badge>
-          ) : item.Type === "Series" ? (
+          ) : item.ParentId === "f4dda38cd82a250f2d1cb08db0c166cf" ? (
             <Badge variant={"outline"} className="bg-background/50">
               <Tv className="h-3 w-3 mr-0.5 text-emerald-400" />
               Series
+            </Badge>
+          ) : item.ParentId === "d6edfc0f3c217d4de0ef70c69ee83a8c" ? (
+            <Badge variant={"outline"} className="bg-background/50">
+              <Tv className="h-3 w-3 mr-0.5 text-yellow-400" />
+              Anime
             </Badge>
           ) : item.Type === "Person" ? (
             <Badge variant={"outline"} className="bg-background/50">
@@ -217,8 +224,7 @@ export function SearchSuggestionItem({
 
         {item.Overview && (
           <p className="text-xs text-muted-foreground/70 mt-1 line-clamp-2 truncate">
-            {item.Overview.substring(0, 80)}
-            {item.Overview.length > 80 ? "..." : ""}
+            {item.Overview}
           </p>
         )}
       </div>

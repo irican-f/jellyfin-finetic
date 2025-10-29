@@ -1,4 +1,8 @@
-import { fetchResumeItems, fetchLibraryItems, fetchRecentlyAddedItems } from "@/app/actions/media";
+import {
+  fetchResumeItems,
+  fetchLibraryItems,
+  fetchRecentlyAddedItems,
+} from "@/app/actions/media";
 import { fetchNextUpItems } from "@/app/actions/tv-shows";
 import { getAuthData, getUserLibraries } from "@/app/actions/utils";
 import { AuthErrorHandler } from "@/app/components/auth-error-handler";
@@ -22,11 +26,12 @@ export default async function Home() {
     user = authData.user;
 
     // Fetch resume items, next up items, and all user libraries
-    const [resumeItemsResult, nextUpItemsResult, userLibraries] = await Promise.all([
-      fetchResumeItems(),
-      fetchNextUpItems(24),
-      getUserLibraries(),
-    ]);
+    const [resumeItemsResult, nextUpItemsResult, userLibraries] =
+      await Promise.all([
+        fetchResumeItems(),
+        fetchNextUpItems(24),
+        getUserLibraries(),
+      ]);
 
     resumeItems = resumeItemsResult;
     nextUpItems = nextUpItemsResult;
@@ -56,7 +61,7 @@ export default async function Home() {
         />
 
         <div className="relative z-[9999] mb-8">
-          <div className="mb-6">
+          <div className="mb-6 flex justify-center">
             <SearchBar />
           </div>
         </div>

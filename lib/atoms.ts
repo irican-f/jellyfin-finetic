@@ -1,8 +1,16 @@
 import { atom } from "jotai";
+import { atomWithStorage } from "jotai/utils";
 import { MediaSourceInfo } from "@/types/jellyfin";
 
 // AI Ask state
 export const isAIAskOpenAtom = atom(false);
+
+// Search display mode (persisted in localStorage)
+export type SearchDisplayMode = "grid" | "list";
+export const searchDisplayModeAtom = atomWithStorage<SearchDisplayMode>(
+  "search-display-mode",
+  "list"
+);
 
 // Navigator enabled state (will be synced with settings)
 export const isNavigatorEnabledAtom = atom(false);
@@ -58,14 +66,14 @@ export const skipToTimestampAtom = atom(null, (get, set, timestamp: number) => {
 // Aurora background colors with transition support
 export const auroraColorsAtom = atom<string[]>([
   "#AA5CC3",
-  "#00A4DC", 
-  "#AA5CC3"
+  "#00A4DC",
+  "#AA5CC3",
 ]);
 
 export const previousAuroraColorsAtom = atom<string[]>([
   "#AA5CC3",
-  "#00A4DC", 
-  "#AA5CC3"
+  "#00A4DC",
+  "#AA5CC3",
 ]);
 
 // Derived atom for updating colors with transition
