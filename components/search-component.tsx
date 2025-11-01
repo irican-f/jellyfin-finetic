@@ -39,7 +39,7 @@ interface SearchBarProps {
   className?: string;
 }
 
-// Types de filtres disponibles avec leurs configurations
+// Available filter types with their configurations
 const FILTER_TYPES = [
   {
     type: "All",
