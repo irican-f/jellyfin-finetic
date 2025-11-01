@@ -1,6 +1,5 @@
 import {
   fetchResumeItems,
-  fetchLibraryItems,
   fetchRecentlyAddedItems,
 } from "@/app/actions/media";
 import { fetchNextUpItems } from "@/app/actions/tv-shows";
