@@ -79,7 +79,7 @@ export default async function Movie({
           </div>
 
           {/* Search bar positioned over backdrop */}
-          <div className="absolute top-8 left-0 right-0 z-20 px-6">
+          <div className="absolute top-8 left-0 right-0 z-20 px-6 flex justify-center">
             <SearchBar />
           </div>
         </div>

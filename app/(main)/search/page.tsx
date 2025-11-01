@@ -57,7 +57,7 @@ export default async function Search({
       <VibrantAuroraBackground amplitude={0.8} blend={0.4} />
 
       <div className="relative z-[9999] mb-8">
-        <div className="mb-6">
+        <div className="mb-6 flex justify-center">
           <SearchBar />
         </div>
       </div>

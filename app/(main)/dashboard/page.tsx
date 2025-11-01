@@ -85,7 +85,7 @@ export default async function DashboardPage({
       <AuroraBackground colorStops={["#34d399", "#38bdf8", "#2dd4bf"]} />
       <div className="relative z-10">
         <div className="relative z-[9999] mb-8">
-          <div className="mb-6">
+          <div className="mb-6 flex justify-center">
             <SearchBar />
           </div>
         </div>

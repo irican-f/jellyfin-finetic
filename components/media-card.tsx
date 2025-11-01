@@ -32,6 +32,7 @@ export function MediaCard({
   fullWidth = false,
   libraryName,
   popoverEnabled = true,
+  withDescription = true,
 }: {
   item: BaseItemDto;
   serverUrl: string;
@@ -42,6 +43,7 @@ export function MediaCard({
   fullWidth?: boolean;
   libraryName?: string;
   popoverEnabled?: boolean;
+  withDescription?: boolean;
 }) {
   const { playMedia, setIsPlayerVisible } = useMediaPlayer();
   const [isPopoverOpen, setPopoverOpen] = useState(false);
@@ -77,14 +79,16 @@ export function MediaCard({
     : `${serverUrl}/Items/${imageItemId}/Images/${imageType}?maxHeight=576&maxWidth=384&quality=100`;
 
   // Generate fallback URLs for different image types
-  const fallbackUrls = imageItemId ? generateImageFallbacks(
-    serverUrl,
-    imageItemId,
-    imageType,
-    continueWatching ? 432 : 576,
-    continueWatching ? 768 : 384,
-    100
-  ) : [];
+  const fallbackUrls = imageItemId
+    ? generateImageFallbacks(
+        serverUrl,
+        imageItemId,
+        imageType,
+        continueWatching ? 432 : 576,
+        continueWatching ? 768 : 384,
+        100
+      )
+    : [];
 
   // Get blur hash
   const imageTag =
@@ -150,7 +154,8 @@ export function MediaCard({
         id: item.Id!,
         name: item.Name!,
         type: item.Type as "Movie" | "Series" | "Episode",
-        resumePositionTicks: resumePosition || item.UserData?.PlaybackPositionTicks,
+        resumePositionTicks:
+          resumePosition || item.UserData?.PlaybackPositionTicks,
       });
       setIsPlayerVisible(true);
     }
@@ -198,21 +203,19 @@ export function MediaCard({
   const cardInnerJsx = (
     <>
       <div
-        className={`relative w-full border rounded-md overflow-hidden active:scale-[0.98] transition ${continueWatching ? "aspect-video" : "aspect-[2/3]"
-          }`}
+        className={`relative w-full border rounded-md overflow-hidden active:scale-[0.98] transition ${
+          continueWatching ? "aspect-video" : "aspect-[2/3]"
+        }`}
       >
-        <Link
-          href={linkHref}
-          draggable={false}
-          className="block w-full h-full"
-        >
+        <Link href={linkHref} draggable={false} className="block w-full h-full">
           {serverUrl ? (
             <>
               {/* Blur hash placeholder */}
               {blurDataUrl && !imageLoaded && (
                 <div
-                  className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
-                    }`}
+                  className={`absolute inset-0 w-full h-full transition-opacity duration-300 ${
+                    progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
+                  }`}
                   style={{
                     backgroundImage: `url(${blurDataUrl})`,
                     backgroundSize: "cover",
@@ -225,8 +228,9 @@ export function MediaCard({
               <RetryImage
                 src={imageUrl}
                 alt={item.Name || ""}
-                className={`w-full h-full object-cover transition-opacity duration-300 shadow-lg shadow-sm group-hover:shadow-md ${progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
-                  } opacity-100`}
+                className={`w-full h-full object-cover transition-opacity duration-300 shadow-lg shadow-sm group-hover:shadow-md ${
+                  progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
+                } opacity-100`}
                 fallbackText="No Image"
                 maxRetries={3}
                 retryDelay={1000}
@@ -245,8 +249,9 @@ export function MediaCard({
 
         {/* Play button overlay */}
         <div
-          className={`absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all duration-300 flex items-center justify-center pointer-events-none ${progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
-            }`}
+          className={`absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-all duration-300 flex items-center justify-center pointer-events-none ${
+            progressPercentage > 0 ? "rounded-t-md" : "rounded-md"
+          }`}
         >
           <div className="invisible group-hover:visible transition-opacity duration-300 pointer-events-auto">
             <button
@@ -305,23 +310,25 @@ export function MediaCard({
         )}
       </div>
       <Link href={linkHref} draggable={false}>
-        <div className="px-1">
-          <div className="mt-2.5 text-sm font-medium text-foreground truncate group-hover:underline">
-            {item.Name}
-          </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            {item.Type === "Movie" ||
+        {withDescription && (
+          <div className="px-1">
+            <div className="mt-2.5 text-sm font-medium text-foreground truncate group-hover:underline">
+              {item.Name}
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {item.Type === "Movie" ||
               item.Type === "Series" ||
               item.Type === "Season"
-              ? item.ProductionYear
-              : item.SeriesName}
+                ? item.ProductionYear
+                : item.SeriesName}
+            </div>
+            <div className="text-xs text-muted-foreground mt-0.5">
+              {item.Type === "Episode"
+                ? `S${item.ParentIndexNumber} • E${item.IndexNumber}`
+                : ""}
+            </div>
           </div>
-          <div className="text-xs text-muted-foreground mt-0.5">
-            {item.Type === "Episode"
-              ? `S${item.ParentIndexNumber} • E${item.IndexNumber}`
-              : ""}
-          </div>
-        </div>
+        )}
       </Link>
     </>
   );
@@ -329,8 +336,9 @@ export function MediaCard({
   if (!popoverEnabled) {
     return (
       <div
-        className={`cursor-pointer group overflow-hidden transition select-none ${continueWatching ? "w-96" : fullWidth ? "w-full" : "w-48"
-          }`}
+        className={`cursor-pointer group overflow-hidden transition select-none ${
+          continueWatching ? "w-96" : fullWidth ? "w-full" : "w-48"
+        }`}
       >
         {cardInnerJsx}
       </div>
@@ -343,13 +351,14 @@ export function MediaCard({
         <div
           onMouseEnter={handleMouseEnter}
           onMouseLeave={handleMouseLeave}
-          className={`cursor-pointer group overflow-hidden transition select-none ${continueWatching ? "w-96" : fullWidth ? "w-full" : "w-48"
-            }`}
+          className={`cursor-pointer group overflow-hidden transition select-none ${
+            continueWatching ? "w-96" : fullWidth ? "w-full" : "w-48"
+          }`}
         >
           {cardInnerJsx}
         </div>
       </PopoverTrigger>
-      <PopoverContent className="w-80" side="right">
+      <PopoverContent className="w-80 z-[1000000]" side="right">
         <div className="grid gap-4">
           <div className="space-y-2">
             {libraryName && <Badge>{libraryName}</Badge>}
