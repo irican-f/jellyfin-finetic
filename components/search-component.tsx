@@ -404,7 +404,7 @@ export function SearchBar({ className = "" }: SearchBarProps) {
                 <div className="p-4 text-center text-muted-foreground">
                   <Search className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p>
-                    Aucun résultat de ce type pour &ldquo;{searchQuery}&rdquo;
+                    No results of this type for &ldquo;{searchQuery}&rdquo;
                   </p>
                 </div>
               )}
