@@ -143,7 +143,6 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         requestReady,
         sendPlaystateUpdate,
         sendProgressUpdate,
-        sendReadyState,
     } = useSyncPlay();
 
     const [streamUrl, setStreamUrl] = useState<string | null>(null);
@@ -567,14 +566,14 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 try {
                     const currentTime = videoRef.current.currentTime;
                     const positionTicks = secondsToTicks(currentTime);
-                    await sendReadyState(true, positionTicks);
+                    await requestReady(true, positionTicks);
                     console.log('✅ SyncPlay ready state sent for media:', currentMedia.name);
                 } catch (error) {
                     console.error('Failed to send SyncPlay ready state:', error);
                 }
             }
         }
-    }, [currentMedia, seekToTime, isSyncPlayEnabled, currentGroup, sendReadyState]);
+    }, [currentMedia, seekToTime, isSyncPlayEnabled, currentGroup]);
 
     // Handle video buffering events for SyncPlay
     const handleVideoWaiting = useCallback(async () => {
@@ -590,6 +589,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         if (isSyncPlayEnabled && videoRef.current && currentGroup && currentMedia) {
             const currentTime = videoRef.current.currentTime;
             const positionTicks = secondsToTicks(currentTime);
+            // await requestBuffering(false, positionTicks);
             await requestReady(true, positionTicks);
             console.log('✅ Video can play - SyncPlay ready state sent');
         }
@@ -607,7 +607,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 // Only seek if the difference is significant (more than 0.5 seconds)
                 if (timeDifference > 0.5) {
                     videoRef.current.currentTime = targetTime;
-                    setCurrentTime(targetTime);
+                    currentTimeRef.current = targetTime;
                     console.log(`⏸️ SyncPlay pause with position sync: ${currentTime}s → ${targetTime}s`);
                 } else {
                     console.log('⏸️ SyncPlay pause - position already synchronized');

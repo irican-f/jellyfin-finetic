@@ -174,7 +174,7 @@ export async function syncPlaySeek(positionTicks: number): Promise<void> {
     }
 }
 
-export async function syncPlayBuffering(isBuffering: boolean, positionTicks: number): Promise<void> {
+export async function syncPlayBuffering(isBuffering: boolean, positionTicks: number, playlistItemId: string | null): Promise<void> {
     try {
         const { serverUrl, user } = await getAuthData();
         const jellyfinInstance = await createJellyfinInstance();
@@ -184,7 +184,14 @@ export async function syncPlayBuffering(isBuffering: boolean, positionTicks: num
         const requestBody: BufferRequestDto = {
             When: new Date().toISOString(),
             PositionTicks: positionTicks,
+            IsPlaying: !isBuffering,
         };
+
+        if (playlistItemId) {
+            requestBody.PlaylistItemId = playlistItemId;
+        }
+
+        console.log("Sending buffering state:", requestBody);
 
         await getSyncPlayApi(api).syncPlayBuffering({ bufferRequestDto: requestBody });
     } catch (error) {
@@ -193,7 +200,7 @@ export async function syncPlayBuffering(isBuffering: boolean, positionTicks: num
     }
 }
 
-export async function syncPlayReady(isReady: boolean, positionTicks: number): Promise<void> {
+export async function syncPlayReady(isReady: boolean, positionTicks: number, playlistItemId: string | null): Promise<void> {
     try {
         const { serverUrl, user } = await getAuthData();
         const jellyfinInstance = await createJellyfinInstance();
@@ -203,7 +210,12 @@ export async function syncPlayReady(isReady: boolean, positionTicks: number): Pr
         const requestBody: ReadyRequestDto = {
             When: new Date().toISOString(),
             PositionTicks: positionTicks,
+            IsPlaying: isReady,
         };
+
+        if (playlistItemId) {
+            requestBody.PlaylistItemId = playlistItemId;
+        }
 
         await getSyncPlayApi(api).syncPlayReady({ readyRequestDto: requestBody });
     } catch (error) {

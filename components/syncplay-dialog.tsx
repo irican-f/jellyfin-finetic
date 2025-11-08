@@ -82,8 +82,6 @@ export function SyncPlayDialog({ open, onOpenChange }: SyncPlayDialogProps) {
     const handleJoinGroup = async (groupId: string) => {
         try {
             await joinGroup(groupId);
-            // Refresh groups to update the UI
-            await refreshGroups();
         } catch (error) {
             console.error("Failed to join group:", error);
         }
@@ -184,9 +182,9 @@ export function SyncPlayDialog({ open, onOpenChange }: SyncPlayDialogProps) {
                             <CardContent>
                                 <div className="space-y-3">
                                     <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium">Status:</span>
-                                        <Badge variant={currentGroup.IsPaused ? "destructive" : "default"}>
-                                            {currentGroup.IsPaused ? "Paused" : "Playing"}
+                                        <span className="text-sm font-medium">State:</span>
+                                        <Badge variant="default">
+                                            {currentGroup.State}
                                         </Badge>
                                     </div>
 
@@ -200,10 +198,6 @@ export function SyncPlayDialog({ open, onOpenChange }: SyncPlayDialogProps) {
                                     )}
 
                                     <div className="flex gap-2">
-                                        <Button onClick={handleSyncNow} variant="outline" size="sm">
-                                            <RefreshCw className="h-4 w-4 mr-1" />
-                                            Sync Now
-                                        </Button>
                                         <Button onClick={handleLeaveGroup} variant="destructive" size="sm">
                                             <LogOut className="h-4 w-4 mr-1" />
                                             Leave Group

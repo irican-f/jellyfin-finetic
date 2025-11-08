@@ -1,6 +1,7 @@
 import { atom } from "jotai";
 import { MediaSourceInfo } from "@/types/jellyfin";
 import { GroupInfoDto } from '@jellyfin/sdk/lib/generated-client';
+import {SyncPlayGroup} from "@/types/syncplay";
 
 // AI Ask state
 export const isAIAskOpenAtom = atom(false);
@@ -101,18 +102,14 @@ export const updateAuroraColorsAtom = atom(
   }
 );
 
-// SyncPlay state - custom interface for our needs
-export interface SyncPlayGroup {
-  GroupId?: string;
-  GroupName?: string;
-  State?: string; // 'Idle' | 'Waiting' | 'Paused' | 'Playing'
-  Participants?: string[];
-  PlayingItemId?: string;
-  PositionTicks?: number;
-  IsPaused: boolean; // true when State is 'Paused' or 'Waiting'
-  LastUpdatedAt?: string;
-}
-
 export const currentSyncPlayGroupAtom = atom<SyncPlayGroup | null>(null);
 export const isSyncPlayEnabledAtom = atom(false);
 export const syncPlayConnectionStatusAtom = atom<'connected' | 'disconnected' | 'connecting'>('disconnected');
+
+export const syncPlayGroupAtom = atom(
+    (get) => get(currentSyncPlayGroupAtom),
+    (get, set, group: SyncPlayGroup | null) => {
+        console.trace("Setting sync play group:", group);
+        set(currentSyncPlayGroupAtom, group);
+    }
+);
