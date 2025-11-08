@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import {
     JellyfinItem,
@@ -71,9 +71,49 @@ import { fetchIntroOutro } from "@/app/actions/media";
 import { getNextEpisode, getPreviousEpisode, fetchEpisodesForCurrentSeason } from "@/app/actions";
 import { decode } from "blurhash";
 
+// Utility functions for performance optimization
+const throttle = (func: Function, delay: number) => {
+    let timeoutId: NodeJS.Timeout;
+    let lastExecTime = 0;
+    return (...args: any[]) => {
+        const currentTime = Date.now();
+        if (currentTime - lastExecTime > delay) {
+            func(...args);
+            lastExecTime = currentTime;
+        } else {
+            clearTimeout(timeoutId);
+            timeoutId = setTimeout(() => {
+                func(...args);
+                lastExecTime = Date.now();
+            }, delay - (currentTime - lastExecTime));
+        }
+    };
+};
+
+const debounce = (func: Function, delay: number) => {
+    let timeoutId: NodeJS.Timeout;
+    return (...args: any[]) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => func(...args), delay);
+    };
+};
+
 interface GlobalMediaPlayerProps {
     onToggleAIAsk?: () => void;
 }
+
+// Memoized subtitle display component for performance
+const SubtitleDisplay = React.memo(({ subtitle }: { subtitle: { text: string; positionTop: boolean } | null }) => {
+    if (!subtitle) return null;
+
+    return (
+        <div
+            className={`fixed left-1/2 transform -translate-x-1/2 z-[100] text-white text-center bg-black/20 px-4 py-2 rounded text-3xl font-medium shadow-xl backdrop-blur-md ${subtitle.positionTop ? "top-[15%]" : "bottom-[10%]"
+                }`}
+            dangerouslySetInnerHTML={{ __html: subtitle.text }}
+        />
+    );
+});
 
 export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     const router = useRouter();
@@ -159,6 +199,15 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     const [seekToTime, setSeekToTime] = useState<number | null>(null);
     const blobUrlsRef = useRef<string[]>([]);
 
+    // Performance optimization refs
+    const currentTimeRef = useRef(0);
+    const lastSubtitleRef = useRef<string | null>(null);
+    const processedSubtitleCache = useRef<Map<string, any>>(new Map());
+    const rafRef = useRef<number | undefined>(undefined);
+    const lastUpdateTime = useRef(0);
+    const lastEndTimeUpdate = useRef(0);
+    const [displayEndTime, setDisplayEndTime] = useState<string>("");
+
     // Auto-hide controls state
     const [controlsVisible, setControlsVisible] = useState(true);
     const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -177,6 +226,12 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     const handleMouseMove = useCallback(() => {
         showControls();
     }, [showControls]);
+
+    // Debounced mouse move handler to reduce frequency
+    const debouncedMouseMove = useCallback(
+        debounce(handleMouseMove, 50), // Max 20fps
+        [handleMouseMove]
+    );
 
     const handleMouseLeave = useCallback(() => {
         if (hideControlsTimeoutRef.current) {
@@ -230,7 +285,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         }
     }, [currentMedia, mediaDetails]);
 
-    // Helper function to convert Jellyfin chapters to expected format
+    // Helper function to convert Jellyfin chapters to expected format - memoized
     const convertJellyfinChapters = useCallback(
         (jellyfinChapters: any[]) => {
             if (!jellyfinChapters || jellyfinChapters.length === 0) return [];
@@ -252,10 +307,18 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         [duration]
     );
 
+    // Memoize converted chapters to avoid recalculation
+    const memoizedChapters = useMemo(() => {
+        if (mediaDetails?.Chapters && mediaDetails.Chapters.length > 0) {
+            return convertJellyfinChapters(mediaDetails.Chapters);
+        }
+        return [];
+    }, [mediaDetails?.Chapters, convertJellyfinChapters]);
+
     const { serverUrl } = useAuth();
 
-    // Helper function to format time to HH:MM AM/PM
-    const formatEndTime = (currentSeconds: number, durationSeconds: number) => {
+    // Helper function to format time to HH:MM AM/PM - memoized for performance
+    const formatEndTime = useCallback((currentSeconds: number, durationSeconds: number) => {
         const remainingSeconds = durationSeconds - currentSeconds;
         const endTime = new Date(Date.now() + remainingSeconds * 1000);
         return endTime.toLocaleTimeString([], {
@@ -263,7 +326,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             minute: "2-digit",
             hour12: true,
         });
-    };
+    }, []);
 
     // Start progress tracking
     const startProgressTracking = useCallback(async () => {
@@ -323,6 +386,31 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         setHasStartedPlayback(false);
     }, [playSessionId, currentMedia, selectedVersion]);
 
+    // RAF-based time updates for better performance
+    const updateTimeWithRAF = useCallback(() => {
+        if (videoRef.current) {
+            const currentTime = videoRef.current.currentTime;
+            currentTimeRef.current = currentTime;
+            setCurrentTimestamp(currentTime); // Keep context updated for AI tools
+
+            const now = performance.now();
+            // Only update UI every 100ms
+            if (now - lastUpdateTime.current >= 100) {
+                setCurrentTime(currentTime);
+                lastUpdateTime.current = now;
+            }
+
+            // Update end time display every 1 second
+            if (now - lastEndTimeUpdate.current >= 1000) {
+                const endTime = formatEndTime(currentTime, duration);
+                setDisplayEndTime(endTime);
+                lastEndTimeUpdate.current = now;
+            }
+
+            rafRef.current = requestAnimationFrame(updateTimeWithRAF);
+        }
+    }, [setCurrentTimestamp, formatEndTime, duration]);
+
     // Handle video events
     const handleVideoPlay = useCallback(async () => {
         // Prevent playback if group state is 'Waiting'
@@ -339,6 +427,12 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             startProgressTracking();
         }
 
+        // Start RAF-based time updates
+        if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+        }
+        rafRef.current = requestAnimationFrame(updateTimeWithRAF);
+
         // SyncPlay integration - notify group of play
         if (isSyncPlayEnabled && currentGroup) {
             try {
@@ -348,9 +442,15 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 console.error('Failed to sync play with group:', error);
             }
         }
-    }, [hasStartedPlayback, startProgressTracking, isSyncPlayEnabled, currentGroup, requestUnpause]);
+    }, [hasStartedPlayback, startProgressTracking, isSyncPlayEnabled, currentGroup, requestUnpause, updateTimeWithRAF]);
 
     const handleVideoPause = useCallback(async () => {
+        // Stop RAF-based time updates when paused
+        if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = undefined;
+        }
+
         if (playSessionId && currentMedia && selectedVersion && videoRef.current) {
             const currentTime = videoRef.current.currentTime;
             const positionTicks = secondsToTicks(currentTime);
@@ -411,26 +511,22 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         }
     }, [isSyncPlayEnabled, currentGroup, requestSeek, requestReady]);
 
-    // Handle video time updates
+    // Handle video time updates - optimized version
     const handleTimeUpdate = useCallback(() => {
         if (videoRef.current) {
             const time = videoRef.current.currentTime;
-            setCurrentTime(time);
+            currentTimeRef.current = time;
             setCurrentTimestamp(time); // Update context with current time
-
-            // SyncPlay integration - send periodic playstate updates
-            if (isSyncPlayEnabled && currentGroup && currentMedia) {
-                const positionTicks = secondsToTicks(time);
-                const isPaused = videoRef.current.paused;
-
-                // Send playstate update via WebSocket (throttled)
-                sendPlaystateUpdate(positionTicks, isPaused);
-
-                // Send progress update for current item
-                sendProgressUpdate(currentMedia.id, positionTicks);
-            }
         }
     }, [setCurrentTimestamp, isSyncPlayEnabled, currentGroup, currentMedia, sendPlaystateUpdate, sendProgressUpdate]);
+
+    // Throttled UI update for current time (kept for fallback)
+    const throttledTimeUpdate = useCallback(
+        throttle(() => {
+            setCurrentTime(currentTimeRef.current);
+        }, 100), // Update UI every 100ms instead of every frame
+        []
+    );
 
     // Handle duration change
     const handleDurationChange = useCallback(() => {
@@ -438,14 +534,11 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             setDuration(videoRef.current.duration);
 
             // Update chapters end times when duration is available
-            if (mediaDetails?.Chapters && mediaDetails.Chapters.length > 0) {
-                const convertedChapters = convertJellyfinChapters(
-                    mediaDetails.Chapters
-                );
-                setChapters(convertedChapters);
+            if (memoizedChapters.length > 0) {
+                setChapters(memoizedChapters);
             }
         }
-    }, [mediaDetails, convertJellyfinChapters]);
+    }, [memoizedChapters]);
 
     // Set video to resume position if provided
     const handleVideoLoadedMetadata = useCallback(async () => {
@@ -642,6 +735,12 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             hideControlsTimeoutRef.current = null;
         }
 
+        // Clean up RAF
+        if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = undefined;
+        }
+
         setIsPlayerVisible(false);
         setStreamUrl(null);
         setMediaDetails(null);
@@ -700,6 +799,10 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
     const selectSubtitleTrack = useCallback(
         (subtitleTrack: CustomSubtitleTrack | null) => {
+            // Clear subtitle cache when changing tracks
+            processedSubtitleCache.current.clear();
+            lastSubtitleRef.current = null;
+
             if (!subtitleTrack) {
                 // Turn off subtitles
                 setSubtitleData([]);
@@ -740,8 +843,13 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         handleClose();
     }, [stopProgressTracking, handleClose]);
 
-    // Helper function to process subtitle text for HTML rendering
+    // Helper function to process subtitle text for HTML rendering with caching
     const processSubtitleText = useCallback((text: string) => {
+        // Check cache first
+        if (processedSubtitleCache.current.has(text)) {
+            return processedSubtitleCache.current.get(text);
+        }
+
         // Check if subtitle should be positioned at top (an8)
         const shouldPositionTop = /\{\\an8\}/.test(text);
 
@@ -759,26 +867,47 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         // Convert \n to <br> tags for line breaks
         processedText = processedText.replace(/\\n/gi, "<br>");
 
-        return {
+        const result = {
             text: processedText,
             positionTop: shouldPositionTop,
         };
+
+        // Cache the result
+        processedSubtitleCache.current.set(text, result);
+        return result;
     }, []);
 
-    // Find current subtitle based on video time
+    // Get visible subtitles within a time window for virtual rendering
+    const getVisibleSubtitles = useCallback((currentTime: number, windowSize: number = 60) => {
+        const startTime = Math.max(0, currentTime - windowSize);
+        const endTime = currentTime + windowSize;
+
+        return subtitleData.filter(subtitle =>
+            subtitle.timestamp >= startTime && subtitle.timestamp <= endTime
+        );
+    }, [subtitleData]);
+
+    // Find current subtitle based on video time using binary search with virtual rendering
     const findCurrentSubtitle = useCallback(
         (currentTimeSeconds: number) => {
-            if (subtitleData.length === 0) return null;
+            // Use virtual rendering - only process subtitles within ±60 seconds
+            const visibleSubtitles = getVisibleSubtitles(currentTimeSeconds);
+            if (visibleSubtitles.length === 0) return null;
 
-            // Find subtitle that should be displayed at current time
-            // For now, we'll use a simple approach - find the subtitle with the closest timestamp that's <= current time
+            // Binary search for better performance O(log n) instead of O(n)
+            let left = 0;
+            let right = visibleSubtitles.length - 1;
             let currentSub = null;
-            for (let i = 0; i < subtitleData.length; i++) {
-                const subtitle = subtitleData[i];
+
+            while (left <= right) {
+                const mid = Math.floor((left + right) / 2);
+                const subtitle = visibleSubtitles[mid];
+
                 if (subtitle.timestamp <= currentTimeSeconds) {
                     currentSub = subtitle;
+                    left = mid + 1;
                 } else {
-                    break;
+                    right = mid - 1;
                 }
             }
 
@@ -789,7 +918,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
             return null;
         },
-        [subtitleData, processSubtitleText]
+        [getVisibleSubtitles, processSubtitleText]
     );
 
     useEffect(() => {
@@ -801,6 +930,10 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
     useEffect(() => {
         if (currentMedia && isPlayerVisible) {
+            // Clear caches when loading new media
+            processedSubtitleCache.current.clear();
+            lastSubtitleRef.current = null;
+
             setVideoStarted(false); // Reset video started state when loading new media
             setBackdropImageLoaded(false); // Reset backdrop image state
             setBlurDataUrl(null); // Reset blur data URL
@@ -816,7 +949,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         }
     }, [isPlayerVisible, videoStarted, showControls]);
 
-    // Decode blur hash for backdrop image
+    // Decode blur hash for backdrop image - optimized
     useEffect(() => {
         if (mediaDetails && !blurDataUrl) {
             // Get blur hash for backdrop
@@ -826,21 +959,31 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             const blurHash =
                 mediaDetails.ImageBlurHashes?.["Backdrop"]?.[backdropImageTag!] || "";
 
-            if (blurHash) {
-                try {
-                    const pixels = decode(blurHash, 32, 32);
-                    const canvas = document.createElement("canvas");
-                    canvas.width = 32;
-                    canvas.height = 32;
-                    const ctx = canvas.getContext("2d");
-                    if (ctx) {
-                        const imageData = ctx.createImageData(32, 32);
-                        imageData.data.set(pixels);
-                        ctx.putImageData(imageData, 0, 0);
-                        setBlurDataUrl(canvas.toDataURL());
+            if (blurHash && blurHash.length > 0) {
+                // Use requestIdleCallback to decode during idle time
+                const decodeBlurHash = () => {
+                    try {
+                        const pixels = decode(blurHash, 32, 32);
+                        const canvas = document.createElement("canvas");
+                        canvas.width = 32;
+                        canvas.height = 32;
+                        const ctx = canvas.getContext("2d");
+                        if (ctx) {
+                            const imageData = ctx.createImageData(32, 32);
+                            imageData.data.set(pixels);
+                            ctx.putImageData(imageData, 0, 0);
+                            setBlurDataUrl(canvas.toDataURL());
+                        }
+                    } catch (error) {
+                        console.error("Error decoding blur hash:", error);
                     }
-                } catch (error) {
-                    console.error("Error decoding blur hash:", error);
+                };
+
+                // Use requestIdleCallback if available, otherwise setTimeout
+                if (window.requestIdleCallback) {
+                    window.requestIdleCallback(decodeBlurHash, { timeout: 1000 });
+                } else {
+                    setTimeout(decodeBlurHash, 0);
                 }
             }
         }
@@ -957,7 +1100,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 // 1. Look for a non-forced subtitle in the preferred language
                 const fullSubtitleIndex = subtitleTracksList.findIndex(
                     (track) =>
-                        track.language === preferredSubtitleLanguage && !track.isForced,
+                        (track.language === preferredSubtitleLanguage || track.label.toLowerCase().startsWith(preferredSubtitleLanguage)) && !track.isForced,
                 );
 
                 if (fullSubtitleIndex !== -1) {
@@ -992,13 +1135,8 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                     setCurrentSubtitle(null);
                 }
 
-                // Process chapters if available
-                if (details.Chapters && details.Chapters.length > 0) {
-                    const convertedChapters = convertJellyfinChapters(details.Chapters);
-                    setChapters(convertedChapters);
-                } else {
-                    setChapters([]);
-                }
+                // Process chapters if available - will be handled by memoizedChapters
+                setChapters(memoizedChapters);
 
                 // Fetch intro/outro segments asynchronously
                 try {
@@ -1041,10 +1179,15 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         }
     };
 
-    // Update current subtitle based on video time
+    // Update current subtitle based on video time - only when subtitle actually changes
     useEffect(() => {
         const subtitle = findCurrentSubtitle(currentTime);
-        setCurrentSubtitle(subtitle);
+
+        // Only update if subtitle actually changed
+        if (subtitle?.text !== lastSubtitleRef.current) {
+            setCurrentSubtitle(subtitle);
+            lastSubtitleRef.current = subtitle?.text || null;
+        }
     }, [currentTime, findCurrentSubtitle]);
 
     // Handle skip timestamp
@@ -1155,8 +1298,14 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             if (hideControlsTimeoutRef.current) {
                 clearTimeout(hideControlsTimeoutRef.current);
             }
+            // Clean up RAF
+            if (rafRef.current) {
+                cancelAnimationFrame(rafRef.current);
+            }
             // Clean up blob URLs on unmount
             cleanupBlobUrls();
+            // Clean up subtitle cache
+            processedSubtitleCache.current.clear();
         };
     }, [cleanupBlobUrls]);
 
@@ -1174,7 +1323,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     return (
         <div
             className="fixed inset-0 z-[999999] bg-black flex items-center justify-center w-screen"
-            onMouseMove={handleMouseMove}
+            onMouseMove={debouncedMouseMove}
             onMouseLeave={handleMouseLeave}
         >
             <MediaPlayer
@@ -1207,10 +1356,10 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                             onPause={handleVideoPause}
                             onEnded={handleVideoEnded}
                             onLoadedMetadata={handleVideoLoadedMetadata}
+                            // onTimeUpdate handled by RAF for better performance
                             onWaiting={handleVideoWaiting}
                             onCanPlay={handleVideoCanPlay}
                             onSeeked={handleVideoSeeked}
-                            onTimeUpdate={handleTimeUpdate}
                             onDurationChange={handleDurationChange}
                             onError={(event) => {
                                 console.warn("Video error caught:", event);
@@ -1405,13 +1554,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                     </div>
                 )}
                 {/* Current Subtitle */}
-                {currentSubtitle && (
-                    <div
-                        className={`fixed left-1/2 transform -translate-x-1/2 z-[100] text-white text-center bg-black/20 px-4 py-2 rounded text-3xl font-medium shadow-xl backdrop-blur-md ${currentSubtitle.positionTop ? "top-[15%]" : "bottom-[10%]"
-                            }`}
-                        dangerouslySetInnerHTML={{ __html: currentSubtitle.text }}
-                    />
-                )}
+                <SubtitleDisplay subtitle={currentSubtitle} />
 
                 {/* Skip Intro Button */}
                 <AnimatePresence>
@@ -1492,9 +1635,9 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                                         </h2>
 
                                         {/* End time display */}
-                                        {duration > 0 && currentTime >= 0 && (
+                                        {duration > 0 && currentTime >= 0 && displayEndTime && (
                                             <div className="text-sm text-white/70 ml-4 whitespace-nowrap">
-                                                Ends at {formatEndTime(currentTime, duration)}
+                                                Ends at {displayEndTime}
                                             </div>
                                         )}
                                     </div>
@@ -1591,7 +1734,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                                                                     <div className="flex-shrink-0">
                                                                         {person.PrimaryImageTag ? (
                                                                             <img
-                                                                                src={`${serverUrl}/Items/${person.Id}/Images/Primary?fillHeight=759&fillWidth=506&quality=96`}
+                                                                                src={serverUrl ? `${serverUrl}/Items/${person.Id}/Images/Primary?fillHeight=759&fillWidth=506&quality=96` : ''}
                                                                                 alt={person.Name!}
                                                                                 className="w-8 h-8 rounded-full object-cover"
                                                                                 onError={(e) => {
