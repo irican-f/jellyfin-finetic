@@ -182,6 +182,7 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
     const isConnectingRef = useRef<boolean>(false);
     const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
     const currentPlayingItemRef = useRef<string | null>(null);
+    const lastReadyPositionRef = useRef<number | null>(null); // Track last position we sent ready for
 
     // WebSocket message sending functions - matching Jellyfin API client pattern
     const sendWebSocketMessage = useCallback((messageType: string, data?: any) => {
@@ -429,14 +430,15 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
                     // For GroupJoined, data is the full group object
                     if (typeof data === 'object' && data !== null) {
                         const groupData = data as any;
+                        const groupState = groupData.State; // 'Idle' | 'Waiting' | 'Paused' | 'Playing'
                         const extendedGroup: SyncPlayGroup = {
                             GroupId: groupData.GroupId,
                             GroupName: groupData.GroupName,
-                            State: groupData.State,
+                            State: groupState,
                             Participants: groupData.Participants,
                             PlayingItemId: groupData.PlayingItemId,
                             PositionTicks: groupData.PositionTicks || 0,
-                            IsPaused: groupData.State === 'Paused'
+                            IsPaused: groupState === 'Paused' || groupState === 'Waiting'
                         };
                         console.log('Setting current group to:', extendedGroup);
                         setCurrentGroup(extendedGroup);
@@ -566,12 +568,58 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
                     console.log('🔄 StateUpdate received');
                     if (typeof data === 'object' && data !== null && currentGroup) {
                         const groupData = data as any;
+                        const newState = groupData.State; // 'Idle' | 'Waiting' | 'Paused' | 'Playing'
+                        const previousState = currentGroup.State;
+                        const positionTicks = groupData.PositionTicks || 0;
                         const newGroup: SyncPlayGroup = {
                             ...currentGroup,
-                            IsPaused: groupData.State === 'Paused',
-                            PositionTicks: groupData.PositionTicks || 0
+                            State: newState,
+                            IsPaused: newState === 'Paused' || newState === 'Waiting',
+                            PositionTicks: positionTicks
                         };
+                        console.log(`State transition: ${previousState} → ${newState}`);
                         setCurrentGroup(newGroup);
+
+                        // If transitioning to Waiting, dispatch pause command to ensure playback is paused
+                        if (newState === 'Waiting' && previousState !== 'Waiting') {
+                            console.log('⏸️ Group entered Waiting state - pausing playback');
+                            dispatchSyncPlayCommand({
+                                type: 'pause',
+                                positionTicks: positionTicks
+                            });
+
+                            // If we've already sent ready state (player is ready), send ready immediately
+                            // This handles the race condition where ready was sent before Waiting state arrived
+                            // Use the position from the StateUpdate as that's what the server is tracking
+                            const hasSentReady = lastReadyPositionRef.current !== null;
+                            console.log('🔍 Checking if player is ready:', {
+                                hasSentReady,
+                                lastReadyPosition: lastReadyPositionRef.current,
+                                stateUpdatePosition: positionTicks
+                            });
+
+                            if (hasSentReady) {
+                                console.log('✅ Player already ready - sending ready state immediately for Waiting state');
+                                // Use position from StateUpdate (server's current position) or last ready position
+                                const readyPosition = positionTicks > 0 ? positionTicks : lastReadyPositionRef.current!;
+                                syncPlayReady(true, readyPosition)
+                                    .then(() => {
+                                        console.log('✅ Ready state sent after Waiting state:', { positionTicks: readyPosition });
+                                    })
+                                    .catch((error) => {
+                                        console.error('Failed to send ready state after Waiting state:', error);
+                                    });
+                            } else {
+                                console.log('⏳ Player not ready yet - will send ready when video can play');
+                            }
+                        }
+
+                        // If transitioning from Waiting to Playing, allow unpause (server will send Unpause command)
+                        // The command handler will check the state and allow playback
+                        if (newState === 'Playing' && previousState === 'Waiting') {
+                            console.log('▶️ Group transitioned from Waiting to Playing - ready for unpause command');
+                            setIsPlaying(true);
+                        }
                     }
                     break;
 
@@ -616,10 +664,23 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
             });
 
             // Apply the command to local player
+            // Validate group state before executing commands
+            const currentGroupState = currentGroup?.State;
+
             switch (command.Data.Command) {
                 case 'Unpause':
                     console.log('▶️ SyncPlay Unpause command received');
                     console.log('Position:', command.Data.PositionTicks);
+                    console.log('Current group state:', currentGroupState);
+
+                    // Only allow unpause if group state is 'Playing' or transitioning to 'Playing'
+                    // If state is 'Waiting', the server will transition to 'Playing' when all are ready
+                    if (currentGroupState === 'Waiting') {
+                        console.log('⏸️ Group is in Waiting state - unpause will be handled when state transitions to Playing');
+                        // Don't execute unpause yet, wait for state transition
+                        return;
+                    }
+
                     setIsPlaying(true);
                     dispatchSyncPlayCommand({
                         type: 'unpause',
@@ -657,7 +718,7 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
         } else {
             console.log('Unhandled WebSocket message type:', message.MessageType);
         }
-    }, [setCurrentGroup, currentGroup, setIsEnabled, disconnect, sendWebSocketMessage, getSyncPlayGroups, setAvailableGroups]);
+    }, [setCurrentGroup, currentGroup, setIsEnabled, disconnect, sendWebSocketMessage, getSyncPlayGroups, setAvailableGroups, dispatchSyncPlayCommand, setIsPlaying]);
 
     // Group management functions
     const listGroups = useCallback(async () => {
@@ -680,14 +741,15 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
             setIsLoading(true);
             setError(null);
             const group = await createSyncPlayGroup(groupName);
+            const groupState = group.State as string; // 'Idle' | 'Waiting' | 'Paused' | 'Playing'
             setCurrentGroup({
                 GroupId: group.GroupId,
                 GroupName: group.GroupName,
-                State: group.State as any,
+                State: groupState,
                 Participants: group.Participants as any, // Type assertion for compatibility
                 PlayingItemId: (group as any).PlayingItemId,
                 PositionTicks: (group as any).PositionTicks,
-                IsPaused: (group as any).IsPaused || false
+                IsPaused: groupState === 'Paused' || groupState === 'Waiting'
             });
             setIsEnabled(true);
             connect();
@@ -709,14 +771,15 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
             // Find the group in available groups and set it as current
             const group = availableGroups.find(g => g.GroupId === groupId);
             if (group) {
+                const groupState = group.State as string; // 'Idle' | 'Waiting' | 'Paused' | 'Playing'
                 setCurrentGroup({
                     GroupId: group.GroupId,
                     GroupName: group.GroupName,
-                    State: group.State as any,
+                    State: groupState,
                     Participants: group.Participants as any, // Type assertion for compatibility
                     PlayingItemId: (group as any).PlayingItemId,
                     PositionTicks: (group as any).PositionTicks,
-                    IsPaused: (group as any).IsPaused || false
+                    IsPaused: groupState === 'Paused' || groupState === 'Waiting'
                 });
             }
         } catch (error) {
@@ -813,16 +876,26 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
 
     const requestReady = useCallback(async (isReady: boolean, positionTicks: number) => {
         try {
+            // Track the position BEFORE sending (to handle race conditions)
+            if (isReady) {
+                lastReadyPositionRef.current = positionTicks;
+            } else {
+                lastReadyPositionRef.current = null;
+            }
             await syncPlayReady(isReady, positionTicks);
             console.log('✅ SyncPlay ready state sent:', { isReady, positionTicks });
         } catch (error) {
             console.error('Failed to send ready state:', error);
+            // Clear ref on error
+            if (isReady) {
+                lastReadyPositionRef.current = null;
+            }
         }
     }, []);
 
     const queueItems = useCallback(async (itemIds: string[], mode: string = "QueueNext") => {
         try {
-            await syncPlayQueue(itemIds, mode);
+            await syncPlayQueue(itemIds, mode as any);
         } catch (error) {
             console.error('Failed to queue items:', error);
             setError('Failed to queue items');
@@ -870,10 +943,20 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
     // SyncPlay ready state function
     const sendReadyState = useCallback(async (isReady: boolean, positionTicks: number) => {
         try {
+            // Track the position BEFORE sending (to handle race conditions)
+            if (isReady) {
+                lastReadyPositionRef.current = positionTicks;
+            } else {
+                lastReadyPositionRef.current = null;
+            }
             await syncPlayReady(isReady, positionTicks);
             console.log('✅ SyncPlay ready state sent:', { isReady, positionTicks });
         } catch (error) {
             console.error('Failed to send SyncPlay ready state:', error);
+            // Clear ref on error
+            if (isReady) {
+                lastReadyPositionRef.current = null;
+            }
         }
     }, []);
 

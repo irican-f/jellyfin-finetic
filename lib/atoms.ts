@@ -105,11 +105,11 @@ export const updateAuroraColorsAtom = atom(
 export interface SyncPlayGroup {
   GroupId?: string;
   GroupName?: string;
-  State?: string;
+  State?: string; // 'Idle' | 'Waiting' | 'Paused' | 'Playing'
   Participants?: string[];
   PlayingItemId?: string;
   PositionTicks?: number;
-  IsPaused: boolean;
+  IsPaused: boolean; // true when State is 'Paused' or 'Waiting'
   LastUpdatedAt?: string;
 }
 

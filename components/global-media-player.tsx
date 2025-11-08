@@ -325,6 +325,15 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
     // Handle video events
     const handleVideoPlay = useCallback(async () => {
+        // Prevent playback if group state is 'Waiting'
+        if (isSyncPlayEnabled && currentGroup && currentGroup.State === 'Waiting') {
+            console.log('⏸️ Group is waiting - pausing playback');
+            if (videoRef.current && !videoRef.current.paused) {
+                videoRef.current.pause();
+            }
+            return;
+        }
+
         setVideoStarted(true); // Mark that video has started playing
         if (!hasStartedPlayback) {
             startProgressTracking();
@@ -446,16 +455,16 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             if (seekToTime !== null) {
                 videoRef.current.currentTime = seekToTime;
                 setSeekToTime(null);
-                // Only auto-play if SyncPlay is not enabled
-                if (!isSyncPlayEnabled) {
+                // Only auto-play if SyncPlay is not enabled OR group state is not 'Waiting'
+                if (!isSyncPlayEnabled || (currentGroup && currentGroup.State !== 'Waiting')) {
                     videoRef.current.play();
                 }
             } else if (currentMedia?.resumePositionTicks) {
                 const resumeTime = ticksToSeconds(currentMedia.resumePositionTicks);
                 videoRef.current.currentTime = resumeTime;
                 setCurrentTime(resumeTime);
-                // Only start playing after we've set the correct position if SyncPlay is not enabled
-                if (!isSyncPlayEnabled) {
+                // Only start playing after we've set the correct position if SyncPlay is not enabled OR group state is not 'Waiting'
+                if (!isSyncPlayEnabled || (currentGroup && currentGroup.State !== 'Waiting')) {
                     videoRef.current.play();
                 }
             }
@@ -520,7 +529,14 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     }, []);
 
     const handleSyncPlayUnpause = useCallback((positionTicks?: number) => {
-        if (videoRef.current) {
+        if (videoRef.current && currentGroup) {
+            // Only allow unpause if group state is 'Playing' or transitioning to 'Playing'
+            // If state is 'Waiting', don't resume playback yet
+            if (currentGroup.State === 'Waiting') {
+                console.log('⏸️ Group is waiting - not resuming playback yet');
+                return;
+            }
+
             // Sync position if provided and different from current position
             if (positionTicks !== undefined) {
                 const targetTime = ticksToSeconds(positionTicks);
@@ -542,7 +558,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 console.log('▶️ SyncPlay unpause command executed');
             }
         }
-    }, []);
+    }, [currentGroup]);
 
     // Track if the last seek was from SyncPlay to handle ready state properly
     const syncPlaySeekRef = useRef<{ positionTicks: number; timestamp: number } | null>(null);
