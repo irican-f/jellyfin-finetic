@@ -103,6 +103,7 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
     const commandHandlerRef = useRef<CommandHandler | null>(null);
     const messageHandlersRef = useRef<MessageHandlers | null>(null);
     const timeSyncRef = useRef<TimeSyncServer | null>(null);
+    const requestReadyRef = useRef<((isReady: boolean, positionTicks: number) => Promise<void>) | null>(null);
 
     // Keep refs in sync with atom values
     useEffect(() => {
@@ -116,38 +117,6 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
     // Helper to check if player is ready (defined at component level)
     const isPlayerReady = useCallback(() => {
         return playerRef.current?.isReady() ?? false;
-    }, []);
-
-    // Helper to wait for player to be ready (defined at component level)
-    const waitForPlayerReady = useCallback((): Promise<void> => {
-        return new Promise((resolve) => {
-            if (!playerRef.current) {
-                console.warn('⚠️ No player registered, cannot wait for ready');
-                resolve();
-                return;
-            }
-
-            // Check if already ready
-            if (playerRef.current.isReady()) {
-                resolve();
-                return;
-            }
-
-            // Wait for videoCanPlay event
-            const timeout = setTimeout(() => {
-                console.warn('⚠️ Timeout waiting for player to be ready');
-                playerRef.current?.off('videoCanPlay', handler);
-                resolve();
-            }, 10000); // 10 second timeout
-
-            const handler = () => {
-                clearTimeout(timeout);
-                playerRef.current?.off('videoCanPlay', handler);
-                resolve();
-            };
-
-            playerRef.current.once('videoCanPlay', handler);
-        });
     }, []);
 
     // Initialize time sync, WebSocket manager, and handlers
@@ -174,7 +143,7 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
         // Command handler will use playerRef to control player directly
         const commandHandler = new CommandHandler({
             setIsPlaying,
-            dispatchCommand: (type, positionTicks) => {
+            dispatchCommand: async (type, positionTicks) => {
                 // Control player directly via interface instead of dispatching through atoms
                 const player = playerRef.current;
                 if (!player) {
@@ -187,6 +156,19 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
 
                 switch (type) {
                     case 'pause':
+                        // For pause: pause first, wait for pause to complete, then seek if needed
+                        // This matches Jellyfin's behavior: pause -> wait for pause event -> seek
+                        // Pause the player first
+                        player.pause();
+
+                        // Wait for pause to complete (similar to Jellyfin's waitForEventOnce for 'pause')
+                        // Since pause() is synchronous, we check if already paused or wait a small delay
+                        if (!player.isPaused()) {
+                            // Wait a bit for pause state to be reflected
+                            await new Promise(resolve => setTimeout(resolve, 50));
+                        }
+
+                        // Seek to position if needed (after pause completes)
                         if (positionTicks !== undefined && positionTicks > 0) {
                             const timeInSeconds = ticksToSeconds(positionTicks);
                             const currentTime = player.getCurrentTime();
@@ -194,21 +176,45 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
                                 player.seekToTicks(positionTicks);
                             }
                         }
-                        player.pause();
                         break;
                     case 'unpause':
+                        // For unpause: seek first if needed, then unpause
                         if (positionTicks !== undefined && positionTicks > 0) {
                             const timeInSeconds = ticksToSeconds(positionTicks);
                             const currentTime = player.getCurrentTime();
                             if (Math.abs(timeInSeconds - currentTime) > 0.5) {
                                 player.seekToTicks(positionTicks);
+                                // Wait for seek to complete before unpausing
+                                await player.once('videoCanPlay');
+                                player.play();
+                            } else {
+                                player.play();
                             }
+                        } else {
+                            player.play();
                         }
-                        player.play();
                         break;
                     case 'seek':
+                        // For seek: unpause -> seek -> wait for ready -> pause -> send ready
+                        // This matches Jellyfin's behavior: seek pauses playback and waits for group
                         if (positionTicks !== undefined) {
+                            // Step 1: Unpause (in case player is paused)
+                            player.play();
+
+                            // Step 2: Seek to position
                             player.seekToTicks(positionTicks);
+
+                            // Step 3: Wait for 'ready' event (videoCanPlay)
+                            await player.once('videoCanPlay');
+
+                            // Step 4: Pause the player (waiting for group to be ready)
+                            player.pause();
+
+                            // Step 5: Send ready state (buffering = false)
+                            const readyPositionTicks = player.getPositionTicks();
+                            if (requestReadyRef.current) {
+                                requestReadyRef.current(true, readyPositionTicks);
+                            }
                         }
                         break;
                     case 'stop':
@@ -216,6 +222,14 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
                         player.seek(0);
                         break;
                 }
+            },
+            forceTimeSyncUpdate: async () => {
+                // Force time sync update when suspicious delays are detected
+                if (timeSyncRef.current) {
+                    console.log('🔄 Forcing time sync update due to suspicious delay');
+                    return await timeSyncRef.current.forceUpdateAndWait();
+                }
+                return Date.now();
             }
         }, () => timeSyncRef.current);
         commandHandlerRef.current = commandHandler;
@@ -229,9 +243,9 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
                     setConnectionStatus('connected');
                     setError(null);
                 },
-                onMessage: (message) => {
+                onMessage: async (message) => {
                     if (messageHandlersRef.current) {
-                        messageHandlersRef.current.handleMessage(message);
+                        await messageHandlersRef.current.handleMessage(message);
                     }
                 },
                 onClose: () => {
@@ -253,7 +267,9 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
                 onCurrentPlaylistItemIdChanged: (playlistItemId) => {
                     currentPlayingItemIdRef.current = playlistItemId
                 },
-                onPlayingChanged: setIsPlaying,
+                onPlayingChanged: (isPlaying) => {
+                    setIsPlaying(isPlaying)
+                },
                 setIsProcessingSyncPlayUpdate,
                 playMedia,
                 onRequestReady: requestReady,
@@ -263,7 +279,7 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
 
                 onRequestUnpause: requestUnpause,
                 isPlayerReady,
-                waitForPlayerReady
+                waitForPlayerReady: async () => await playerRef.current?.once('videoCanPlay')
             },
             {
                 getCurrentGroup: () => currentGroupRef.current,
@@ -286,7 +302,7 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
                 wsManagerRef.current.disconnect();
             }
         };
-    }, [serverUrl, user, isPlayerReady, waitForPlayerReady]);
+    }, [serverUrl, user]);
 
     // WebSocket connection management
     const connect = useCallback(() => {
@@ -433,7 +449,6 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
     const requestBuffering = useCallback(async (isBuffering: boolean, positionTicks: number) => {
         try {
             await syncPlayBuffering(isBuffering, positionTicks, currentPlayingItemIdRef.current);
-            console.trace('🔄 SyncPlay buffering state sent:', { isBuffering, positionTicks });
         } catch (error) {
             console.error('Failed to send buffering state:', error);
         }
@@ -454,6 +469,11 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
             }
         }
     }, []);
+
+    // Keep requestReady ref in sync
+    useEffect(() => {
+        requestReadyRef.current = requestReady;
+    }, [requestReady]);
 
     const queueItems = useCallback(async (itemIds: string[], mode: string = "QueueNext") => {
         try {

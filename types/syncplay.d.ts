@@ -75,6 +75,7 @@ interface SyncPlayGroup {
     GroupId?: string;
     GroupName?: string;
     State?: string; // 'Idle' | 'Waiting' | 'Paused' | 'Playing'
+    StateReason?: string;
     Participants?: string[];
     PlayingItemId?: string;
     PositionTicks?: number;
@@ -101,7 +102,7 @@ interface SyncPlayPlayerInterface {
     // Event emitter methods
     on: (event: 'userPlay' | 'userPause' | 'userSeek' | 'videoCanPlay' | 'videoBuffering' | 'videoSeeked', handler: (...args: any[]) => void) => void;
     off: (event: 'userPlay' | 'userPause' | 'userSeek' | 'videoCanPlay' | 'videoBuffering' | 'videoSeeked', handler: (...args: any[]) => void) => void;
-    once: (event: 'userPlay' | 'userPause' | 'userSeek' | 'videoCanPlay' | 'videoBuffering' | 'videoSeeked', handler: (...args: any[]) => void) => void;
+    once: (event: 'userPlay' | 'userPause' | 'userSeek' | 'videoCanPlay' | 'videoBuffering' | 'videoSeeked', handler?: (...args: any[]) => void) => Promise<void>;
 }
 
 export type {

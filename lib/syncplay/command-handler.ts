@@ -21,7 +21,8 @@ export interface LastCommand {
 
 export interface CommandHandlerCallbacks {
     setIsPlaying: (playing: boolean) => void;
-    dispatchCommand: (type: 'unpause' | 'pause' | 'seek' | 'stop', positionTicks?: number) => void;
+    dispatchCommand: (type: 'unpause' | 'pause' | 'seek' | 'stop', positionTicks?: number) => Promise<void>;
+    forceTimeSyncUpdate?: () => Promise<number>;
 }
 
 export class CommandHandler {
@@ -67,74 +68,66 @@ export class CommandHandler {
         return true;
     }
 
-    scheduleCommand(
+    private async calculateCommandTime(serverTime: Date): Promise<Date> {
+        const timeSync = this.getTimeSync?.();
+
+        if (!timeSync || !timeSync.isReady()) {
+            return serverTime;
+        }
+
+        // Update stale time sync if needed
+        if (timeSync.isStale() && this.callbacks.forceTimeSyncUpdate) {
+            await this.callbacks.forceTimeSyncUpdate();
+        }
+
+        return timeSync.remoteDateToLocal(serverTime);
+    }
+
+    private executeCommandImmediately(
+        commandKey: string,
+        commandType: 'unpause' | 'pause' | 'seek' | 'stop',
+        positionTicks?: number
+    ): void {
+        this.executedCommands.add(commandKey);
+        this.callbacks.dispatchCommand(commandType, positionTicks);
+    }
+
+    async scheduleCommand(
         command: SyncPlayCommand,
         commandType: 'unpause' | 'pause' | 'seek' | 'stop'
-    ): void {
-        // Create a unique key for this command to prevent duplicate execution
+    ): Promise<void> {
+        this.clearScheduledCommands();
+
         const commandKey = `${command.When}-${command.Command}-${command.PositionTicks}`;
 
-        // Check if this exact command was already executed
         if (this.executedCommands.has(commandKey)) {
             return;
         }
 
+        const maxAllowedDelay = 5000;
         const serverTime = new Date(command.When);
-        const timeSync = this.getTimeSync?.();
-        const currentTime = new Date();
+        const localTime = new Date();
+        const commandTime = await this.calculateCommandTime(serverTime);
+        let delay = commandTime.getTime() - localTime.getTime();
 
-        let commandTime: Date;
-        if (timeSync) {
-            commandTime = timeSync.remoteDateToLocal(serverTime);
-            const delay = commandTime.getTime() - currentTime.getTime();
-
-            // If the delay is suspiciously large (>5 seconds), something is wrong with time sync
-            // In this case, execute immediately since we can't trust the client's clock
-            if (Math.abs(delay) > 5000) {
-                console.warn(`⚠️ Suspicious delay detected (${delay.toFixed(2)}ms). Client clock appears to be wrong. Executing command immediately.`);
-                // Execute immediately - don't schedule
-                this.executedCommands.add(commandKey);
-                this.callbacks.dispatchCommand(commandType, command.PositionTicks);
-                return;
-            }
-        } else {
-            commandTime = serverTime; // Fallback if time sync not available
-            console.log(`⚠️ No time sync available, using server time directly`);
-        }
-
-        const delay = commandTime.getTime() - currentTime.getTime();
-
-        // If delay is still suspiciously large even after time sync, execute immediately
-        if (Math.abs(delay) > 5000) {
-            console.warn(`⚠️ Large delay after time sync (${delay.toFixed(2)}ms). Executing command immediately.`);
-            this.executedCommands.add(commandKey);
-            this.callbacks.dispatchCommand(commandType, command.PositionTicks);
+        // Execute immediately if delay is suspicious or negative
+        if (delay < 0) {
+            this.executeCommandImmediately(commandKey, commandType, command.PositionTicks);
             return;
         }
 
-        // Clear any existing timeout for this command
-        const existingTimeout = this.scheduledTimeouts.get(commandKey);
-        if (existingTimeout) {
-            clearTimeout(existingTimeout);
+        if (delay > maxAllowedDelay) {
+            console.warn(`⚠️ Delay too large (${delay.toFixed(2)}ms) for ${commandType}.`);
         }
 
-        if (delay > 0) {
-            // Schedule for future execution
-            console.log(`⏰ Scheduling command ${commandType} to execute in ${delay}ms (at ${commandTime.toISOString()})`);
-            const timeout = setTimeout(() => {
-                // Mark as executed before executing to prevent race conditions
-                this.executedCommands.add(commandKey);
-                this.callbacks.dispatchCommand(commandType, command.PositionTicks);
-                this.scheduledTimeouts.delete(commandKey);
-            }, delay);
-            this.scheduledTimeouts.set(commandKey, timeout);
-        } else {
-            // Execute immediately if time has already passed
-            // console.log(`✅ Executing command ${commandType} immediately (scheduled time ${commandTime.toISOString()} has passed)`);
-            // Mark as executed before executing
-            this.executedCommands.add(commandKey);
-            this.callbacks.dispatchCommand(commandType, command.PositionTicks);
-        }
+        // Schedule for future execution
+        console.log(`⏰ Scheduling ${commandType} in ${delay}ms`);
+        const timeout = setTimeout(() => {
+            this.executeCommandImmediately(commandKey, commandType, command.PositionTicks);
+            this.scheduledTimeouts.delete(commandKey);
+        }, delay);
+
+        this.scheduledTimeouts.set(commandKey, timeout);
     }
 
     storeLastCommand(command: SyncPlayCommand): void {

@@ -50,7 +50,7 @@ export class MessageHandlers {
         this.wsManager = wsManager;
     }
 
-    handleMessage(message: any): void {
+    async handleMessage(message: any): Promise<void> {
         // Handle message ID deduplication with array (max 10 IDs)
         const messageId = message.MessageId;
         if (messageId) {
@@ -75,7 +75,7 @@ export class MessageHandlers {
         if (message.MessageType === 'SyncPlayGroupUpdate') {
             this.handleGroupUpdate(message as SyncPlayGroupUpdateMessage);
         } else if (message.MessageType === 'SyncPlayCommand') {
-            this.handleCommand(message as SyncPlayCommandMessage);
+            await this.handleCommand(message as SyncPlayCommandMessage);
         } else if (message.MessageType === 'KeepAlive') {
             console.debug('Received KeepAlive from server.');
         } else if (message.MessageType === 'ForceKeepAlive') {
@@ -245,6 +245,7 @@ export class MessageHandlers {
         const groupData = data;
 
         const previousState = groupToUpdate.State;
+        const previousReason = groupToUpdate.StateReason;
         const newState = groupData.State;
         const reason = groupData.Reason;
         const positionTicks = groupData.PositionTicks;
@@ -252,11 +253,12 @@ export class MessageHandlers {
         const updatedGroup: SyncPlayGroup = {
             ...groupToUpdate,
             State: newState,
+            StateReason: reason,
             IsPaused: newState === 'Paused' || newState === 'Waiting',
             PositionTicks: positionTicks
         };
 
-        console.log(`State transition: ${previousState} → ${newState}`);
+        console.log(`State transition: ${previousState} (${previousReason}) → ${newState} (${reason})`);
 
         this.callbacks.onCurrentGroupChanged(updatedGroup);
 
@@ -275,6 +277,10 @@ export class MessageHandlers {
                 return
             }
 
+            // if (reason === 'Seek') {
+            //     console.log('▶️ Group entered Waiting state with Seek reason - waiting for all clients to be ready');
+            // }
+
             if (reason === 'Buffer') {
                 const readyPosition = positionTicks !== undefined && positionTicks >= 0
                     ? positionTicks
@@ -283,11 +289,11 @@ export class MessageHandlers {
                 if (readyPosition >= 0) {
                     // Check if player is ready, if not wait for it
                     if (!this.callbacks.isPlayerReady()) {
-                        console.log('⏳ Player not ready yet - waiting for videoCanPlay event before sending ready');
+                        // console.log('⏳ Player not ready yet - waiting for videoCanPlay event before sending ready');
                         await this.callbacks.waitForPlayerReady();
                     }
 
-                    console.log('🔄 Send ready state buffering has ended', this.callbacks.isPlayerReady());
+                    // console.log('🔄 Send ready state buffering has ended', this.callbacks.isPlayerReady());
                     await this.callbacks.onRequestReady(true, readyPosition);
                 }
             }
@@ -295,43 +301,29 @@ export class MessageHandlers {
             // Only handle transition TO Waiting, not when already in Waiting
             if (previousState !== 'Waiting') {
                 if (reason === 'Unpause') {
-                    console.log('▶️ Group entered Waiting state with Unpause reason - sending unpause request');
+                    // console.log('▶️ Group entered Waiting state with Unpause reason - sending unpause request');
                     await this.callbacks.onRequestUnpause()
                 }
 
                 // Don't send seek command here - the Seek command was already received via SyncPlayCommand
                 // StateUpdate with Seek reason just indicates the group is waiting after a seek
-                if (reason === 'Seek') {
-                    console.log('▶️ Group entered Waiting state with Seek reason - waiting for all clients to be ready');
+                // if (reason === 'Seek') {
+                //     console.log('▶️ Group entered Waiting state with Seek reason - waiting for all clients to be ready');
+                // }
+
+                // if (reason === 'Buffer') {
+                //     console.log('▶️ Group entered Waiting state with Buffer reason - sending buffer command');
+                // }
+
+                const readyPosition = positionTicks !== undefined && positionTicks >= 0
+                    ? positionTicks
+                    : (this.state.lastReadyPositionRef.current ?? 0);
+
+                if (!this.callbacks.isPlayerReady()) {
+                    await this.callbacks.waitForPlayerReady();
                 }
 
-                if (reason === 'Buffer') {
-                    console.log('▶️ Group entered Waiting state with Buffer reason - sending buffer command');
-                }
-
-                const hasSentReady = this.state.lastReadyPositionRef.current !== null;
-                console.log('🔍 Checking if player is ready:', {
-                    hasSentReady,
-                    lastReadyPosition: this.state.lastReadyPositionRef.current,
-                    stateUpdatePosition: positionTicks
-                });
-
-                if (hasSentReady) {
-                    // Use the last ready position if StateUpdate doesn't provide position
-                    // Position 0 is valid (start of video), so allow it
-                    const readyPosition = positionTicks !== undefined && positionTicks >= 0
-                        ? positionTicks
-                        : (this.state.lastReadyPositionRef.current ?? 0);
-
-                    if (readyPosition >= 0) {
-                        console.log('✅ Player already ready - sending ready state immediately for Waiting state');
-                        await this.callbacks.onRequestReady(true, readyPosition);
-                    } else {
-                        console.log('⏳ Waiting for valid position before sending ready state');
-                    }
-                } else {
-                    console.log('⏳ Player not ready yet - will send ready when video can play');
-                }
+                await this.callbacks.onRequestReady(true, readyPosition);
             }
             else {
                 // For other reasons, only send ready if position changed significantly
@@ -381,7 +373,7 @@ export class MessageHandlers {
         // Schedule command execution based on When timestamp and time sync
         // Commands are now handled directly by command handler via player interface
         const commandType = command.Command.toLowerCase() as 'unpause' | 'pause' | 'seek' | 'stop';
-        this.commandHandler.scheduleCommand(command, commandType);
+        await this.commandHandler.scheduleCommand(command, commandType);
     }
 }
 

@@ -554,7 +554,6 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             isPaused: () => videoRef.current?.paused ?? true,
             isReady: () => {
                 if (!videoRef.current) return false;
-                console.log("===========  Player ready state", videoRef.current.readyState);
                 return videoRef.current.readyState >= 1; // HAVE_FUTURE_DATA or higher
             },
 
@@ -596,21 +595,28 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                     handlers.delete(handler);
                 }
             },
-            once: (event: string, handler: (...args: any[]) => void) => {
-                // Create a wrapper that calls the handler once and then unsubscribes
-                const onceHandler = (...args: any[]) => {
-                    handler(...args);
-                    // Unsubscribe after first call
-                    const handlers = eventHandlersRef.current.get(event);
-                    if (handlers) {
-                        handlers.delete(onceHandler);
+            once: (event: string, handler?: (...args: any[]) => void): Promise<void> => {
+                return new Promise((resolve) => {
+                    // Create a wrapper that resolves the promise and calls the handler if provided
+                    const onceHandler = (...args: any[]) => {
+                        // Unsubscribe after first call
+                        const handlers = eventHandlersRef.current.get(event);
+                        if (handlers) {
+                            handlers.delete(onceHandler);
+                        }
+                        // Call handler if provided
+                        if (handler) {
+                            handler(...args);
+                        }
+                        // Resolve the promise
+                        resolve();
+                    };
+                    // Subscribe the wrapper
+                    if (!eventHandlersRef.current.has(event)) {
+                        eventHandlersRef.current.set(event, new Set());
                     }
-                };
-                // Subscribe the wrapper
-                if (!eventHandlersRef.current.has(event)) {
-                    eventHandlersRef.current.set(event, new Set());
-                }
-                eventHandlersRef.current.get(event)!.add(onceHandler);
+                    eventHandlersRef.current.get(event)!.add(onceHandler);
+                });
             },
         };
 

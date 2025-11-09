@@ -17,6 +17,7 @@ class Measurement {
     requestReceived: number;
     responseSent: number;
     responseReceived: number;
+    timestamp: number; // When this measurement was taken
 
     constructor(
         requestSent: Date,
@@ -28,6 +29,7 @@ class Measurement {
         this.requestReceived = requestReceived.getTime();
         this.responseSent = responseSent.getTime();
         this.responseReceived = responseReceived.getTime();
+        this.timestamp = Date.now(); // Record when measurement was taken
     }
 
     /**
@@ -74,6 +76,15 @@ export class TimeSync {
      */
     isReady(): boolean {
         return !!this.measurement;
+    }
+
+    /**
+     * Checks if time sync measurement is stale (older than 30 seconds)
+     */
+    isStale(): boolean {
+        if (!this.measurement) return true;
+        const age = Date.now() - this.measurement.timestamp;
+        return age > 30000; // 30 seconds
     }
 
     /**
@@ -176,7 +187,11 @@ export class TimeSync {
      */
     startPing(): void {
         this.pingStop = false;
-        this.internalRequestPing();
+        // Make first ping immediately, then continue with polling interval
+        this.requestPing()
+            .then((result) => this.onPingResponseCallback(result))
+            .catch((error) => this.onPingRequestErrorCallback(error))
+            .finally(() => this.internalRequestPing());
     }
 
     /**
@@ -198,6 +213,33 @@ export class TimeSync {
         this.pollingInterval = PollingIntervalGreedy;
         this.pings = 0;
         this.startPing();
+    }
+
+    /**
+     * Forces an immediate time sync update and returns a promise that resolves when complete
+     * @returns Promise that resolves with the timestamp when the update completed
+     */
+    async forceUpdateAndWait(): Promise<number> {
+        return new Promise((resolve) => {
+            // Store the original callback
+            const originalCallback = this.callbacks.onUpdate;
+
+            // Override callback to resolve promise when update completes
+            this.callbacks.onUpdate = (timeOffset: number, ping: number) => {
+                // Restore original callback
+                this.callbacks.onUpdate = originalCallback;
+                // Call original callback
+                originalCallback(timeOffset, ping);
+                // Resolve with current timestamp
+                resolve(Date.now());
+            };
+
+            // Stop current ping and start fresh
+            this.stopPing();
+            this.pollingInterval = PollingIntervalGreedy;
+            this.pings = 0;
+            this.startPing();
+        });
     }
 
     /**
