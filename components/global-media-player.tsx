@@ -1,74 +1,54 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-    JellyfinItem,
-    MediaSourceInfo,
-    MediaStream,
-} from "@/types/jellyfin";
+import { JellyfinItem, MediaSourceInfo, MediaStream, } from "@/types/jellyfin";
 import { Button } from "@/components/ui/button";
-import { motion, AnimatePresence } from "framer-motion";
+import { AnimatePresence, motion } from "framer-motion";
 import {
+    CustomSubtitleTrack,
     MediaPlayer,
     MediaPlayerControls,
     MediaPlayerControlsOverlay,
+    MediaPlayerEpisodeSelector,
     MediaPlayerFullscreen,
-    MediaPlayerLoading,
+    MediaPlayerNextEpisode,
     MediaPlayerPiP,
     MediaPlayerPlay,
+    MediaPlayerPreviousEpisode,
     MediaPlayerSeek,
     MediaPlayerSeekBackward,
     MediaPlayerSeekForward,
+    MediaPlayerSettings,
     MediaPlayerTime,
+    MediaPlayerTooltip,
     MediaPlayerVideo,
     MediaPlayerVolume,
-    MediaPlayerSettings,
-    MediaPlayerTooltip,
-    MediaPlayerNextEpisode,
-    MediaPlayerPreviousEpisode,
-    MediaPlayerEpisodeSelector,
-    CustomSubtitleTrack,
 } from "@/components/ui/media-player";
 import MuxVideo from "@mux/mux-video-react";
-import {
-    ArrowLeft,
-    RotateCcw,
-    RotateCw,
-    Users,
-    Ship,
-    FastForward,
-} from "lucide-react";
+import { ArrowLeft, FastForward, RotateCcw, RotateCw, Ship, Users, } from "lucide-react";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
 import {
-    getPlaybackUrl,
-    getSubtitleTracks,
+    fetchEpisodesForCurrentSeason,
     fetchMediaDetails,
-    reportPlaybackStart,
+    getNextEpisode,
+    getPlaybackUrl,
+    getPreviousEpisode,
+    getSubtitleTracks,
     reportPlaybackProgress,
+    reportPlaybackStart,
     reportPlaybackStopped,
 } from "@/app/actions";
 import { getSubtitleContent } from "@/app/actions/subtitles";
-import HlsVideoElement from "hls-video-element/react";
 import { formatRuntime } from "@/lib/utils";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
+import { Popover, PopoverContent, PopoverTrigger, } from "@/components/ui/popover";
 import { ProgressiveBlur } from "@/components/motion-primitives/progressive-blur";
 import { useAuth } from "@/hooks/useAuth";
-import { useSettings, BITRATE_OPTIONS } from "@/contexts/settings-context";
+import { BITRATE_OPTIONS, useSettings } from "@/contexts/settings-context";
 import { useSyncPlay } from "@/contexts/SyncPlayContext";
-import {
-    detectDevice,
-    getDeviceName,
-    isHLSSupported,
-    canDirectPlay,
-    getOptimalStreamingParams,
-} from "@/lib/device-detection";
+import { SyncPlayPlayerInterface } from "@/types/syncplay";
+import { canDirectPlay, getOptimalStreamingParams, } from "@/lib/device-detection";
 import { fetchIntroOutro } from "@/app/actions/media";
-import { getNextEpisode, getPreviousEpisode, fetchEpisodesForCurrentSeason } from "@/app/actions";
 import { decode } from "blurhash";
 
 // Utility functions for performance optimization
@@ -125,8 +105,6 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         setCurrentMediaWithSource,
         setCurrentTimestamp,
         playMedia,
-        syncPlayCommand,
-        clearSyncPlayCommand,
     } = useMediaPlayer();
     const { videoBitrate, preferredAudioLanguage, preferredSubtitleLanguage } =
         useSettings();
@@ -135,14 +113,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     const {
         currentGroup,
         isEnabled: isSyncPlayEnabled,
-        requestPause,
-        requestUnpause,
-        requestStop,
-        requestSeek,
-        requestBuffering,
-        requestReady,
-        sendPlaystateUpdate,
-        sendProgressUpdate,
+        registerPlayer,
     } = useSyncPlay();
 
     const [streamUrl, setStreamUrl] = useState<string | null>(null);
@@ -207,6 +178,9 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
     const lastEndTimeUpdate = useRef(0);
     const [displayEndTime, setDisplayEndTime] = useState<string>("");
 
+    // Player interface ref for SyncPlay context
+    const playerInterfaceRef = useRef<SyncPlayPlayerInterface | null>(null);
+
     // Auto-hide controls state
     const [controlsVisible, setControlsVisible] = useState(true);
     const hideControlsTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -254,6 +228,18 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
     // Helper function to convert Jellyfin ticks to seconds
     const ticksToSeconds = (ticks: number) => ticks / 10000000;
+
+    // Event emitter for player events
+    const eventHandlersRef = useRef<Map<string, Set<(...args: any[]) => void>>>(new Map());
+
+    const emitEvent = useCallback((event: string, ...args: any[]) => {
+        const handlers = eventHandlersRef.current.get(event);
+        if (handlers && handlers.size > 0) {
+            handlers.forEach(handler => handler(...args));
+        } else {
+            console.warn(`⚠️ No handlers registered for event: ${event}`);
+        }
+    }, []);
 
     // Load next/previous episodes for TV shows
     const loadEpisodeNavigation = useCallback(async () => {
@@ -432,16 +418,12 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         }
         rafRef.current = requestAnimationFrame(updateTimeWithRAF);
 
-        // SyncPlay integration - notify group of play
-        if (isSyncPlayEnabled && currentGroup) {
-            try {
-                await requestUnpause();
-                console.log('▶️ SyncPlay unpause request sent');
-            } catch (error) {
-                console.error('Failed to sync play with group:', error);
-            }
+        // SyncPlay integration - emit user play event
+        // Context will subscribe to this event and decide whether to send unpause command to server
+        if (isSyncPlayEnabled) {
+            emitEvent('userPlay');
         }
-    }, [hasStartedPlayback, startProgressTracking, isSyncPlayEnabled, currentGroup, requestUnpause, updateTimeWithRAF]);
+    }, [hasStartedPlayback, startProgressTracking, isSyncPlayEnabled, currentGroup, updateTimeWithRAF]);
 
     const handleVideoPause = useCallback(async () => {
         // Stop RAF-based time updates when paused
@@ -463,52 +445,25 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             );
         }
 
-        // SyncPlay integration - notify group of pause
-        if (isSyncPlayEnabled && currentGroup) {
-            try {
-                await requestPause();
-                console.log('⏸️ SyncPlay pause request sent');
-            } catch (error) {
-                console.error('Failed to sync pause with group:', error);
-            }
+        // SyncPlay integration - emit user pause event
+        // Context will subscribe to this event and decide whether to send pause command to server
+        if (isSyncPlayEnabled) {
+            emitEvent('userPause');
         }
-    }, [playSessionId, currentMedia, selectedVersion, isSyncPlayEnabled, currentGroup, requestPause]);
+    }, [playSessionId, currentMedia, selectedVersion, isSyncPlayEnabled, currentGroup, emitEvent]);
 
     // Handle video seek events
     const handleVideoSeeked = useCallback(async () => {
         if (videoRef.current && isSyncPlayEnabled && currentGroup) {
             const currentTime = videoRef.current.currentTime;
-            const positionTicks = secondsToTicks(currentTime);
 
-            // Check if this was a SyncPlay seek command
-            if (syncPlaySeekRef.current) {
-                const { positionTicks: syncPlayPositionTicks, timestamp } = syncPlaySeekRef.current;
-                const timeSinceSeek = Date.now() - timestamp;
+            // SyncPlay integration - emit user seek events
+            // Context will subscribe to these events and decide whether to send seek command to server
+            // emitEvent('userSeek', currentTime);
 
-                // Only handle if this seek was recent (within 1 second) and matches our SyncPlay seek
-                if (timeSinceSeek < 1000 && Math.abs(positionTicks - syncPlayPositionTicks) < 1000000) { // 1 second tolerance in ticks
-                    console.log('✅ SyncPlay seek completed - sending ready state');
-                    try {
-                        await requestReady(true, positionTicks);
-                        console.log('✅ SyncPlay seek complete - ready state sent');
-                    } catch (error) {
-                        console.error('Failed to send ready state after SyncPlay seek:', error);
-                    }
-                    // Clear the ref
-                    syncPlaySeekRef.current = null;
-                    return;
-                }
-            }
-
-            // This was a user-initiated seek, send seek request to group
-            try {
-                await requestSeek(positionTicks);
-                console.log('⏩ SyncPlay seek request sent to:', currentTime);
-            } catch (error) {
-                console.error('Failed to sync seek with group:', error);
-            }
+            emitEvent('videoSeeked');
         }
-    }, [isSyncPlayEnabled, currentGroup, requestSeek, requestReady]);
+    }, [isSyncPlayEnabled, currentGroup, emitEvent]);
 
     // Handle video time updates - optimized version
     const handleTimeUpdate = useCallback(() => {
@@ -517,7 +472,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
             currentTimeRef.current = time;
             setCurrentTimestamp(time); // Update context with current time
         }
-    }, [setCurrentTimestamp, isSyncPlayEnabled, currentGroup, currentMedia, sendPlaystateUpdate, sendProgressUpdate]);
+    }, [setCurrentTimestamp]);
 
     // Throttled UI update for current time (kept for fallback)
     const throttledTimeUpdate = useCallback(
@@ -561,153 +516,108 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                 }
             }
 
-            // SyncPlay integration - send ready state when media is loaded
-            if (isSyncPlayEnabled && currentGroup && currentMedia) {
-                try {
-                    const currentTime = videoRef.current.currentTime;
-                    const positionTicks = secondsToTicks(currentTime);
-                    await requestReady(true, positionTicks);
-                    console.log('✅ SyncPlay ready state sent for media:', currentMedia.name);
-                } catch (error) {
-                    console.error('Failed to send SyncPlay ready state:', error);
-                }
+            // SyncPlay integration - emit video can play event
+            // Context will subscribe to this event and decide when to send ready state
+            if (isSyncPlayEnabled) {
+                emitEvent('videoCanPlay');
             }
         }
-    }, [currentMedia, seekToTime, isSyncPlayEnabled, currentGroup]);
+    }, [currentMedia, seekToTime, isSyncPlayEnabled, currentGroup, emitEvent]);
 
     // Handle video buffering events for SyncPlay
     const handleVideoWaiting = useCallback(async () => {
-        if (isSyncPlayEnabled && videoRef.current && currentGroup && currentMedia) {
-            const currentTime = videoRef.current.currentTime;
-            const positionTicks = secondsToTicks(currentTime);
-            await requestBuffering(true, positionTicks);
-            console.log('🔄 Video buffering - SyncPlay buffering state sent');
+        // SyncPlay integration - emit video buffering event
+        // Context will subscribe to this event and decide when to send buffering state
+        if (isSyncPlayEnabled) {
+            emitEvent('videoBuffering');
         }
-    }, [isSyncPlayEnabled, currentGroup, currentMedia, requestBuffering]);
+    }, [isSyncPlayEnabled, emitEvent]);
 
     const handleVideoCanPlay = useCallback(async () => {
-        if (isSyncPlayEnabled && videoRef.current && currentGroup && currentMedia) {
-            const currentTime = videoRef.current.currentTime;
-            const positionTicks = secondsToTicks(currentTime);
-            // await requestBuffering(false, positionTicks);
-            await requestReady(true, positionTicks);
-            console.log('✅ Video can play - SyncPlay ready state sent');
+        // SyncPlay integration - emit video can play event
+        // Context will subscribe to this event and decide when to send ready state
+        if (isSyncPlayEnabled) {
+            emitEvent('videoCanPlay');
         }
-    }, [isSyncPlayEnabled, currentGroup, currentMedia, requestReady]);
+    }, [isSyncPlayEnabled, emitEvent]);
 
-    // SyncPlay command handlers - called from SyncPlay context
-    const handleSyncPlayPause = useCallback((positionTicks?: number) => {
-        if (videoRef.current) {
-            // Sync position if provided and different from current position
-            if (positionTicks !== undefined) {
-                const targetTime = ticksToSeconds(positionTicks);
-                const currentTime = videoRef.current.currentTime;
-                const timeDifference = Math.abs(targetTime - currentTime);
+    // Callback to create player interface when video element is mounted
+    const createPlayerInterface = useCallback(() => {
+        if (!videoRef.current || playerInterfaceRef.current) {
+            return;
+        }
 
-                // Only seek if the difference is significant (more than 0.5 seconds)
-                if (timeDifference > 0.5) {
-                    videoRef.current.currentTime = targetTime;
-                    currentTimeRef.current = targetTime;
-                    console.log(`⏸️ SyncPlay pause with position sync: ${currentTime}s → ${targetTime}s`);
-                } else {
-                    console.log('⏸️ SyncPlay pause - position already synchronized');
+        playerInterfaceRef.current = {
+            // State queries
+            getCurrentTime: () => videoRef.current?.currentTime ?? 0,
+            getPositionTicks: () => secondsToTicks(videoRef.current?.currentTime ?? 0),
+            isPaused: () => videoRef.current?.paused ?? true,
+            isReady: () => {
+                if (!videoRef.current) return false;
+                console.log("===========  Player ready state", videoRef.current.readyState);
+                return videoRef.current.readyState >= 1; // HAVE_FUTURE_DATA or higher
+            },
+
+            // Controls
+            play: () => {
+                if (videoRef.current && videoRef.current.paused) {
+                    videoRef.current.play();
                 }
-            }
-
-            if (!videoRef.current.paused) {
-                videoRef.current.pause();
-                console.log('⏸️ SyncPlay pause command executed');
-            }
-        }
-    }, []);
-
-    const handleSyncPlayUnpause = useCallback((positionTicks?: number) => {
-        if (videoRef.current && currentGroup) {
-            // Only allow unpause if group state is 'Playing' or transitioning to 'Playing'
-            // If state is 'Waiting', don't resume playback yet
-            if (currentGroup.State === 'Waiting') {
-                console.log('⏸️ Group is waiting - not resuming playback yet');
-                return;
-            }
-
-            // Sync position if provided and different from current position
-            if (positionTicks !== undefined) {
-                const targetTime = ticksToSeconds(positionTicks);
-                const currentTime = videoRef.current.currentTime;
-                const timeDifference = Math.abs(targetTime - currentTime);
-
-                // Only seek if the difference is significant (more than 0.5 seconds)
-                if (timeDifference > 0.5) {
-                    videoRef.current.currentTime = targetTime;
-                    setCurrentTime(targetTime);
-                    console.log(`▶️ SyncPlay unpause with position sync: ${currentTime}s → ${targetTime}s`);
-                } else {
-                    console.log('▶️ SyncPlay unpause - position already synchronized');
+            },
+            pause: () => {
+                if (videoRef.current && !videoRef.current.paused) {
+                    videoRef.current.pause();
                 }
-            }
+            },
+            seek: (timeInSeconds: number) => {
+                if (videoRef.current) {
+                    videoRef.current.currentTime = timeInSeconds;
+                    setCurrentTime(timeInSeconds);
+                }
+            },
+            seekToTicks: (positionTicks: number) => {
+                if (videoRef.current) {
+                    const timeInSeconds = ticksToSeconds(positionTicks);
+                    videoRef.current.currentTime = timeInSeconds;
+                    setCurrentTime(timeInSeconds);
+                }
+            },
 
-            if (videoRef.current.paused) {
-                videoRef.current.play();
-                console.log('▶️ SyncPlay unpause command executed');
-            }
-        }
-    }, [currentGroup]);
-
-    // Track if the last seek was from SyncPlay to handle ready state properly
-    const syncPlaySeekRef = useRef<{ positionTicks: number; timestamp: number } | null>(null);
-
-    const handleSyncPlaySeek = useCallback(async (positionTicks: number) => {
-        if (videoRef.current) {
-            const seekTime = ticksToSeconds(positionTicks);
-            videoRef.current.currentTime = seekTime;
-            setCurrentTime(seekTime);
-            console.log('⏩ SyncPlay seek command executed to:', seekTime);
-
-            // Mark this as a SyncPlay seek so we can handle the ready state in onSeeked
-            syncPlaySeekRef.current = {
-                positionTicks,
-                timestamp: Date.now()
-            };
-        }
-    }, []);
-
-    const handleSyncPlayStop = useCallback(() => {
-        if (videoRef.current) {
-            videoRef.current.pause();
-            videoRef.current.currentTime = 0;
-            setCurrentTime(0);
-            console.log('⏹️ SyncPlay stop command executed');
-        }
-    }, []);
-
-    // Handle SyncPlay commands from atom
-    useEffect(() => {
-        if (syncPlayCommand) {
-            console.log('🎮 Processing SyncPlay command:', syncPlayCommand);
-
-            switch (syncPlayCommand.type) {
-                case 'pause':
-                    handleSyncPlayPause(syncPlayCommand.positionTicks);
-                    break;
-                case 'unpause':
-                    handleSyncPlayUnpause(syncPlayCommand.positionTicks);
-                    break;
-                case 'seek':
-                    if (syncPlayCommand.positionTicks !== undefined) {
-                        handleSyncPlaySeek(syncPlayCommand.positionTicks);
+            // Event emitter methods
+            on: (event: string, handler: (...args: any[]) => void) => {
+                if (!eventHandlersRef.current.has(event)) {
+                    eventHandlersRef.current.set(event, new Set());
+                }
+                eventHandlersRef.current.get(event)!.add(handler);
+            },
+            off: (event: string, handler: (...args: any[]) => void) => {
+                const handlers = eventHandlersRef.current.get(event);
+                if (handlers) {
+                    handlers.delete(handler);
+                }
+            },
+            once: (event: string, handler: (...args: any[]) => void) => {
+                // Create a wrapper that calls the handler once and then unsubscribes
+                const onceHandler = (...args: any[]) => {
+                    handler(...args);
+                    // Unsubscribe after first call
+                    const handlers = eventHandlersRef.current.get(event);
+                    if (handlers) {
+                        handlers.delete(onceHandler);
                     }
-                    break;
-                case 'stop':
-                    handleSyncPlayStop();
-                    break;
-                default:
-                    console.log('Unknown SyncPlay command type:', syncPlayCommand.type);
-            }
+                };
+                // Subscribe the wrapper
+                if (!eventHandlersRef.current.has(event)) {
+                    eventHandlersRef.current.set(event, new Set());
+                }
+                eventHandlersRef.current.get(event)!.add(onceHandler);
+            },
+        };
 
-            // Clear the command after processing
-            clearSyncPlayCommand();
+        if (registerPlayer) {
+            registerPlayer(playerInterfaceRef.current);
         }
-    }, [syncPlayCommand, handleSyncPlayPause, handleSyncPlayUnpause, handleSyncPlaySeek, handleSyncPlayStop, clearSyncPlayCommand]);
+    }, [registerPlayer]);
 
     // Helper function to clean up blob URLs
     const cleanupBlobUrls = useCallback(() => {
@@ -1176,6 +1086,7 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         } finally {
             console.log("Setting loading to false");
             setLoading(false);
+            emitEvent('videoLoaded');
         }
     };
 
@@ -1345,7 +1256,14 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
                     <MediaPlayerVideo asChild>
                         <MuxVideo
                             // @ts-ignore
-                            ref={videoRef}
+                            ref={(el) => {
+                                const previousEl = videoRef.current;
+                                videoRef.current = el ?? null;
+                                // Only create interface when element is first mounted (not on every update)
+                                if (el && !previousEl) {
+                                    createPlayerInterface();
+                                }
+                            }}
                             src={streamUrl}
                             crossOrigin=""
                             playsInline

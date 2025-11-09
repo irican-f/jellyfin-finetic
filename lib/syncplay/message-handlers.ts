@@ -8,7 +8,7 @@ import { SyncPlayGroupUpdateMessage, SyncPlayCommandMessage, SyncPlayPlaylistIte
 import { GroupInfoDto } from '@jellyfin/sdk/lib/generated-client';
 import { fetchMediaDetails } from '@/app/actions';
 import { toast } from 'sonner';
-import { CommandHandler, PendingCommand } from './command-handler';
+import { CommandHandler } from './command-handler';
 import { WebSocketManager } from './websocket-manager';
 
 export interface MessageHandlerCallbacks {
@@ -25,7 +25,8 @@ export interface MessageHandlerCallbacks {
 
     onRequestUnpause: () => Promise<void>;
     onRequestReady: (isReady: boolean, positionTicks: number) => Promise<void>;
-    onSyncPlayCommand: (type: 'unpause' | 'pause' | 'seek' | 'stop', positionTicks?: number) => void;
+    isPlayerReady: () => boolean;
+    waitForPlayerReady: () => Promise<void>;
 }
 
 export interface MessageHandlerState {
@@ -93,9 +94,10 @@ export class MessageHandlers {
     }
 
     private async handleGroupUpdate(message: SyncPlayGroupUpdateMessage): Promise<void> {
-        console.log('🎯 Processing SyncPlayGroupUpdate:', message);
         const updateType = message.Data.Type;
         const data = message.Data.Data;
+
+        // console.log('🎯 Processing SyncPlayGroupUpdate:', message);
 
         switch (updateType) {
             case 'GroupJoined':
@@ -226,10 +228,7 @@ export class MessageHandlers {
     }
 
     private async handleStateUpdate(message: SyncPlayGroupUpdateMessage, data: any): Promise<void> {
-        console.log('🔄 StateUpdate received', {
-            currentGroup: this.state.getCurrentGroup(),
-            groupId: message.Data.GroupId
-        });
+        console.log('🔄 StateUpdate received', data.State, data.Reason);
 
         if (typeof data !== 'object' && data === null) {
             console.log('⚠️ Invalid data received for StateUpdate');
@@ -248,17 +247,7 @@ export class MessageHandlers {
         const previousState = groupToUpdate.State;
         const newState = groupData.State;
         const reason = groupData.Reason;
-        const previousPositionTicks = groupToUpdate.PositionTicks || 0;
-
-        const pendingCommand = this.commandHandler.getPendingCommand();
-
-        let positionTicks = previousPositionTicks;
-
-        if (groupData.PositionTicks && groupData.PositionTicks > 0) {
-            positionTicks = groupData.PositionTicks;
-        } else if (pendingCommand && pendingCommand.positionTicks > 0) {
-            positionTicks = pendingCommand.positionTicks;
-        }
+        const positionTicks = groupData.PositionTicks;
 
         const updatedGroup: SyncPlayGroup = {
             ...groupToUpdate,
@@ -267,88 +256,92 @@ export class MessageHandlers {
             PositionTicks: positionTicks
         };
 
-        console.log(`State transition: ${previousState} → ${newState}`, {
-            previousPosition: previousPositionTicks,
-            stateUpdatePosition: groupData.PositionTicks,
-            pendingCommandPosition: pendingCommand?.positionTicks,
-            finalPosition: positionTicks
-        });
+        console.log(`State transition: ${previousState} → ${newState}`);
 
         this.callbacks.onCurrentGroupChanged(updatedGroup);
 
-        // Handle pending command dispatch
-        let commandDispatched = false;
-        let dispatchedCommandType: 'unpause' | 'pause' | 'seek' | 'stop' | null = null;
-
-        if (pendingCommand) {
-            console.log('✅ StateUpdate received - confirming pending command:', pendingCommand.command);
-
-            let shouldDispatch = false;
-            switch (pendingCommand.command) {
-                case 'Unpause':
-                    if (newState === 'Playing') {
-                        shouldDispatch = true;
-                        this.callbacks.onPlayingChanged(true);
-                    } else if (newState === 'Waiting') {
-                        console.log('⏸️ Still in Waiting state - unpause will be dispatched when state becomes Playing');
-                        shouldDispatch = false;
-                        await this.callbacks.onRequestUnpause()
-                    }
-                    break;
-                case 'Pause':
-                    if (newState === 'Paused' || newState === 'Waiting') {
-                        shouldDispatch = true;
-                        this.callbacks.onPlayingChanged(false);
-                    }
-                    break;
-                case 'Seek':
-                    shouldDispatch = true;
-                    break;
-                case 'Stop':
-                    if (newState === 'Idle' || newState === 'Paused') {
-                        shouldDispatch = true;
-                        this.callbacks.onPlayingChanged(false);
-                    }
-                    break;
-            }
-
-            if (shouldDispatch) {
-                console.log('✅ Dispatching confirmed command:', pendingCommand.command);
-                dispatchedCommandType = pendingCommand.command.toLowerCase() as 'unpause' | 'pause' | 'seek' | 'stop';
-                this.callbacks.onSyncPlayCommand(dispatchedCommandType, pendingCommand.positionTicks);
-                commandDispatched = true;
-                this.commandHandler.clearPendingCommand();
-            }
+        // Update playing state based on group state
+        if (newState === 'Playing') {
+            this.callbacks.onPlayingChanged(true);
+        } else if (newState === 'Paused' || newState === 'Waiting') {
+            this.callbacks.onPlayingChanged(false);
         }
 
         // Handle Waiting state transition
         if (newState === 'Waiting') {
-            if (reason === 'Unpause') {
-                console.log('▶️ Group entered Waiting state with Unpause reason - sending unpause request');
-                await this.callbacks.onRequestUnpause()
-            }
 
-            if (reason === 'Seek') {
-                console.log('▶️ Group entered Waiting state with Seek reason - sending seek command');
-                this.callbacks.onSyncPlayCommand('seek', positionTicks);
+            if (reason === 'Ready') {
+                await this.callbacks.onRequestUnpause()
+                return
             }
 
             if (reason === 'Buffer') {
-                console.log('▶️ Group entered Waiting state with Buffer reason - sending buffer command');
+                const readyPosition = positionTicks !== undefined && positionTicks >= 0
+                    ? positionTicks
+                    : (this.state.lastReadyPositionRef.current ?? 0);
+
+                if (readyPosition >= 0) {
+                    // Check if player is ready, if not wait for it
+                    if (!this.callbacks.isPlayerReady()) {
+                        console.log('⏳ Player not ready yet - waiting for videoCanPlay event before sending ready');
+                        await this.callbacks.waitForPlayerReady();
+                    }
+
+                    console.log('🔄 Send ready state buffering has ended', this.callbacks.isPlayerReady());
+                    await this.callbacks.onRequestReady(true, readyPosition);
+                }
             }
 
-            const hasSentReady = this.state.lastReadyPositionRef.current !== null;
-            console.log('🔍 Checking if player is ready:', {
-                hasSentReady,
-                lastReadyPosition: this.state.lastReadyPositionRef.current,
-                stateUpdatePosition: positionTicks
-            });
+            // Only handle transition TO Waiting, not when already in Waiting
+            if (previousState !== 'Waiting') {
+                if (reason === 'Unpause') {
+                    console.log('▶️ Group entered Waiting state with Unpause reason - sending unpause request');
+                    await this.callbacks.onRequestUnpause()
+                }
 
-            if (hasSentReady) {
-                console.log('✅ Player already ready - sending ready state immediately for Waiting state');
-                await this.callbacks.onRequestReady(true, this.state.lastReadyPositionRef.current!);
-            } else {
-                console.log('⏳ Player not ready yet - will send ready when video can play');
+                // Don't send seek command here - the Seek command was already received via SyncPlayCommand
+                // StateUpdate with Seek reason just indicates the group is waiting after a seek
+                if (reason === 'Seek') {
+                    console.log('▶️ Group entered Waiting state with Seek reason - waiting for all clients to be ready');
+                }
+
+                if (reason === 'Buffer') {
+                    console.log('▶️ Group entered Waiting state with Buffer reason - sending buffer command');
+                }
+
+                const hasSentReady = this.state.lastReadyPositionRef.current !== null;
+                console.log('🔍 Checking if player is ready:', {
+                    hasSentReady,
+                    lastReadyPosition: this.state.lastReadyPositionRef.current,
+                    stateUpdatePosition: positionTicks
+                });
+
+                if (hasSentReady) {
+                    // Use the last ready position if StateUpdate doesn't provide position
+                    // Position 0 is valid (start of video), so allow it
+                    const readyPosition = positionTicks !== undefined && positionTicks >= 0
+                        ? positionTicks
+                        : (this.state.lastReadyPositionRef.current ?? 0);
+
+                    if (readyPosition >= 0) {
+                        console.log('✅ Player already ready - sending ready state immediately for Waiting state');
+                        await this.callbacks.onRequestReady(true, readyPosition);
+                    } else {
+                        console.log('⏳ Waiting for valid position before sending ready state');
+                    }
+                } else {
+                    console.log('⏳ Player not ready yet - will send ready when video can play');
+                }
+            }
+            else {
+                // For other reasons, only send ready if position changed significantly
+                const lastReadyPos = this.state.lastReadyPositionRef.current;
+                const positionChanged = lastReadyPos === null || Math.abs(positionTicks - lastReadyPos) > 1000000; // 0.1 seconds
+
+                if (positionChanged && lastReadyPos !== null) {
+                    console.log('🔄 Position changed while in Waiting state - sending ready with new position');
+                    await this.callbacks.onRequestReady(true, positionTicks);
+                }
             }
         }
 
@@ -371,17 +364,13 @@ export class MessageHandlers {
     }
 
     private async handleCommand(message: SyncPlayCommandMessage): Promise<void> {
-        console.log('🎮 Processing SyncPlayCommand:', message);
         const command = message.Data;
-        console.log('Command:', command.Command);
-        console.log('Position:', command.PositionTicks);
-        console.log('When:', command.When);
 
         // Check for duplicate command
         if (this.commandHandler.isDuplicate(command)) {
             const shouldSkip = await this.commandHandler.handleDuplicate(command, this.state.isPlaying);
+
             if (shouldSkip) {
-                console.log('⏭️ Skipping duplicate command');
                 return;
             }
         }
@@ -389,13 +378,10 @@ export class MessageHandlers {
         // Store command for duplicate detection
         this.commandHandler.storeLastCommand(command);
 
-        // Store command as pending - wait for StateUpdate to confirm before dispatching
-        this.commandHandler.setPendingCommand({
-            command: command.Command,
-            positionTicks: command.PositionTicks,
-            when: command.When
-        });
-        console.log('⏳ Command stored as pending, waiting for StateUpdate to confirm:', command.Command);
+        // Schedule command execution based on When timestamp and time sync
+        // Commands are now handled directly by command handler via player interface
+        const commandType = command.Command.toLowerCase() as 'unpause' | 'pause' | 'seek' | 'stop';
+        this.commandHandler.scheduleCommand(command, commandType);
     }
 }
 

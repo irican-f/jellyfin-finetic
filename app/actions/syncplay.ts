@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { createJellyfinInstance } from "@/lib/server-utils";
 import { GroupInfoDto, QueueRequestDto, BufferRequestDto, SeekRequestDto, ReadyRequestDto, NewGroupRequestDto, JoinGroupRequestDto, GroupQueueMode } from "@jellyfin/sdk/lib/generated-client";
 import { getSyncPlayApi } from "@jellyfin/sdk/lib/utils/api";
+import { AxiosError } from "axios";
 
 // Helper function to get auth data from cookies
 async function getAuthData() {
@@ -191,8 +192,6 @@ export async function syncPlayBuffering(isBuffering: boolean, positionTicks: num
             requestBody.PlaylistItemId = playlistItemId;
         }
 
-        console.log("Sending buffering state:", requestBody);
-
         await getSyncPlayApi(api).syncPlayBuffering({ bufferRequestDto: requestBody });
     } catch (error) {
         console.error("Failed to send buffering state:", error);
@@ -258,6 +257,27 @@ export async function syncPlaySetNewQueue(itemIds: string[], startPosition: numb
         await getSyncPlayApi(api).syncPlaySetNewQueue({ playRequestDto: requestBody });
     } catch (error) {
         console.error("Failed to set new queue:", error);
+        throw error;
+    }
+}
+
+export async function syncPlayPing(ping: number) {
+    try {
+        const { serverUrl, user } = await getAuthData();
+        const jellyfinInstance = await createJellyfinInstance();
+        const api = jellyfinInstance.createApi(serverUrl);
+        api.accessToken = user.AccessToken;
+
+        // Round ping to integer as server expects Int64
+        const pingInt = Math.round(ping);
+
+        const requestBody = {
+            Ping: pingInt
+        };
+
+        await getSyncPlayApi(api).syncPlayPing({ pingRequestDto: requestBody });
+    } catch (error: any) {
+        console.error("Failed to send ping:", error.response?.data);
         throw error;
     }
 }

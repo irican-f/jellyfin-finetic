@@ -50,7 +50,6 @@ export function SyncPlayDialog({ open, onOpenChange }: SyncPlayDialogProps) {
         joinGroup,
         leaveGroup,
         refreshGroups,
-        syncManually,
     } = useSyncPlay();
 
     const [isCreatingGroup, setIsCreatingGroup] = useState(false);
@@ -93,10 +92,6 @@ export function SyncPlayDialog({ open, onOpenChange }: SyncPlayDialogProps) {
         } catch (error) {
             console.error("Failed to leave group:", error);
         }
-    };
-
-    const handleSyncNow = () => {
-        syncManually();
     };
 
     const getConnectionStatusIcon = () => {

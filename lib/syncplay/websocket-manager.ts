@@ -84,7 +84,6 @@ export class WebSocketManager {
     }
 
     disconnect(): void {
-        console.trace('Disconnecting WebSocket...');
         this.clearKeepAlive();
 
         if (this.ws && this.ws.readyState === WebSocket.OPEN) {
@@ -96,7 +95,6 @@ export class WebSocketManager {
 
     send(messageType: string, data?: any): void {
         if (this.ws?.readyState === WebSocket.OPEN) {
-            console.log(`Sending web socket message: ${messageType}`);
             const message = {
                 MessageType: messageType,
                 Data: data
@@ -108,7 +106,6 @@ export class WebSocketManager {
     scheduleKeepAlive(timeout: number): void {
         this.clearKeepAlive();
         const intervalMs = timeout * 1000 * 0.5;
-        console.debug(`Scheduling KeepAlive every ${intervalMs}ms (timeout: ${timeout}s)`);
         this.keepAliveInterval = setInterval(() => {
             if (this.ws?.readyState === WebSocket.OPEN) {
                 this.send('KeepAlive');

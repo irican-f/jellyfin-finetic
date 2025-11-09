@@ -71,7 +71,7 @@ interface SendCommand {
 }
 
 // SyncPlay state - custom interface for our needs
-export interface SyncPlayGroup {
+interface SyncPlayGroup {
     GroupId?: string;
     GroupName?: string;
     State?: string; // 'Idle' | 'Waiting' | 'Paused' | 'Playing'
@@ -82,6 +82,28 @@ export interface SyncPlayGroup {
     LastUpdatedAt?: string;
 }
 
+/**
+ * Player interface for SyncPlay context to control the player
+ */
+interface SyncPlayPlayerInterface {
+    // State queries
+    getCurrentTime: () => number; // in seconds
+    getPositionTicks: () => number; // in ticks
+    isPaused: () => boolean;
+    isReady: () => boolean; // video can play
+
+    // Controls
+    play: () => void;
+    pause: () => void;
+    seek: (timeInSeconds: number) => void;
+    seekToTicks: (positionTicks: number) => void;
+
+    // Event emitter methods
+    on: (event: 'userPlay' | 'userPause' | 'userSeek' | 'videoCanPlay' | 'videoBuffering' | 'videoSeeked', handler: (...args: any[]) => void) => void;
+    off: (event: 'userPlay' | 'userPause' | 'userSeek' | 'videoCanPlay' | 'videoBuffering' | 'videoSeeked', handler: (...args: any[]) => void) => void;
+    once: (event: 'userPlay' | 'userPause' | 'userSeek' | 'videoCanPlay' | 'videoBuffering' | 'videoSeeked', handler: (...args: any[]) => void) => void;
+}
+
 export type {
     WebSocketMessage,
     SyncPlayGroupUpdateMessage,
@@ -89,5 +111,6 @@ export type {
     SyncPlayPlaylistItem,
     SyncPlayCommandMessage,
     SendCommand,
-    SyncPlayGroup
+    SyncPlayGroup,
+    SyncPlayPlayerInterface
 };

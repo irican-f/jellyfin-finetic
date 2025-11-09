@@ -109,7 +109,6 @@ export const syncPlayConnectionStatusAtom = atom<'connected' | 'disconnected' | 
 export const syncPlayGroupAtom = atom(
     (get) => get(currentSyncPlayGroupAtom),
     (get, set, group: SyncPlayGroup | null) => {
-        console.trace("Setting sync play group:", group);
         set(currentSyncPlayGroupAtom, group);
     }
 );
