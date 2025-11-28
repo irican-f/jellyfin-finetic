@@ -283,3 +283,13 @@ export async function syncPlayPing(ping: number) {
         throw error;
     }
 }
+
+export type {
+    BufferRequestDto,
+    ReadyRequestDto,
+    SeekRequestDto,
+    NewGroupRequestDto,
+    JoinGroupRequestDto,
+    GroupInfoDto,
+    QueueRequestDto
+};

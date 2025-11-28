@@ -23,7 +23,7 @@ type JellyfinItem = BaseItemDto;
 export interface MediaSegment {
   Id: string;
   ItemId: string;
-  Type: "Intro" | "Outro";
+  Type: string;
   StartTicks: number;
   EndTicks: number;
 }
@@ -550,7 +550,7 @@ export async function fetchIntroOutro(
     api.accessToken = user.AccessToken;
 
     const response = await fetch(
-      `${serverUrl}/MediaSegments/${itemId}?includeSegmentTypes=Outro&includeSegmentTypes=Intro`,
+      `${serverUrl}/MediaSegments/${itemId}`,
       {
         method: "GET",
         headers: {

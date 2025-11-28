@@ -1,10 +1,10 @@
 "use client";
 
 import { useTheme } from "next-themes";
-import { useEffect, useState, useMemo } from "react";
-import { useAtom } from "jotai";
+import { useEffect, useState } from "react";
+import { useAtom, useAtomValue } from "jotai";
 import AuroraTransition from "@/components/Aurora/AuroraTransition";
-import { auroraColorsAtom, previousAuroraColorsAtom } from "@/lib/atoms";
+import { auroraColorsAtom, previousAuroraColorsAtom, isPlayerVisibleAtom } from "@/lib/atoms";
 
 interface AuroraBackgroundProps {
   imageUrl?: string;
@@ -23,6 +23,7 @@ export function AuroraBackground({
 }: AuroraBackgroundProps) {
   const [currentColors] = useAtom(auroraColorsAtom);
   const [previousColors] = useAtom(previousAuroraColorsAtom);
+  const isPlayerVisible = useAtomValue(isPlayerVisibleAtom);
   const [transitionProgress, setTransitionProgress] = useState(1.0);
 
   // Start transition when colors change
@@ -54,13 +55,13 @@ export function AuroraBackground({
   // Use provided colorStops or fall back to atom colors
   const finalCurrentColors =
     colorStops !== undefined &&
-    JSON.stringify(colorStops) !==
+      JSON.stringify(colorStops) !==
       JSON.stringify(["#AA5CC3", "#00A4DC", "#AA5CC3"])
       ? colorStops
       : currentColors;
   const finalPreviousColors =
     colorStops !== undefined &&
-    JSON.stringify(colorStops) !==
+      JSON.stringify(colorStops) !==
       JSON.stringify(["#AA5CC3", "#00A4DC", "#AA5CC3"])
       ? colorStops
       : previousColors;
@@ -93,6 +94,11 @@ export function AuroraBackground({
 
   // Don't render anything if not in dark mode and theme is resolved
   if (mounted && themeResolved && !shouldShowAurora) {
+    return null;
+  }
+
+  // Optimization: Don't render aurora when player is visible to save resources
+  if (isPlayerVisible) {
     return null;
   }
 
