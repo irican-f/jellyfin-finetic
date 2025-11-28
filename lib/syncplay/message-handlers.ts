@@ -180,50 +180,68 @@ export class MessageHandlers {
         this.callbacks.onCurrentPlaylistItemIdChanged(newPlaylistItemId);
         this.callbacks.onPlayingChanged(playlistData.IsPlaying || false);
 
-        if (playlistData.Playlist && playlistData.Playlist.length > 0) {
-            const playingItem = playlistData.Playlist[playlistData.PlayingItemIndex];
+        try {
+            if (playlistData.Playlist && playlistData.Playlist.length > 0) {
+                const playingItem = playlistData.Playlist[playlistData.PlayingItemIndex];
 
-            if (playingItem) {
-                const mediaDetails = await fetchMediaDetails(playingItem.ItemId);
+                if (playingItem) {
+                    const mediaDetails = await fetchMediaDetails(playingItem.ItemId);
 
-                const mediaToPlay = {
-                    id: mediaDetails?.Id,
-                    name: mediaDetails?.Name || 'SyncPlay Item',
-                    type: mediaDetails?.Type,
-                    resumePositionTicks: playlistData.StartPositionTicks || 0
-                } as MediaToPlay;
+                    const mediaToPlay = {
+                        id: mediaDetails?.Id,
+                        name: mediaDetails?.Name || 'SyncPlay Item',
+                        type: mediaDetails?.Type,
+                        resumePositionTicks: playlistData.StartPositionTicks || 0
+                    } as MediaToPlay;
 
-                console.log('🎮 Media to play:', playlistData.Playlist?.[playlistData.PlayingItemIndex]?.PlaylistItemId);
+                    console.log('🎮 Media to play:', playlistData.Playlist?.[playlistData.PlayingItemIndex]?.PlaylistItemId);
 
-                this.callbacks.onCurrentPlaylistItemIdChanged(newPlaylistItemId);
+                    this.callbacks.onCurrentPlaylistItemIdChanged(newPlaylistItemId);
 
-                if (reason === 'NewPlaylist') {
-                    console.log('🆕 New playlist started');
-                    this.callbacks.playMedia(mediaToPlay);
-                    toast.info('New playlist started', {
-                        description: 'SyncPlay group is now playing',
-                    });
-                } else if (reason === 'SetCurrentItem') {
-                    const isAlreadyPlaying = this.state.getCurrentPlayingItemId() === newPlaylistItemId;
-
-                    if (!isAlreadyPlaying) {
-                        console.log('🔄 Current item changed');
+                    if (reason === 'NewPlaylist') {
+                        console.log('🆕 New playlist started');
                         this.callbacks.playMedia(mediaToPlay);
-                        toast.info('Item changed', {
-                            description: 'SyncPlay group switched to new item',
+                        toast.info('New playlist started', {
+                            description: 'SyncPlay group is now playing',
                         });
+                    } else if (reason === 'SetCurrentItem') {
+                        const isAlreadyPlaying = this.state.getCurrentPlayingItemId() === newPlaylistItemId;
+
+                        if (!isAlreadyPlaying) {
+                            console.log('🔄 Current item changed');
+                            this.callbacks.playMedia(mediaToPlay);
+                            toast.info('Item changed', {
+                                description: 'SyncPlay group switched to new item',
+                            });
+                        } else {
+                            console.log('🎵 Item already playing, skipping media player restart');
+                            // Reset flag immediately if already playing
+                            this.callbacks.setIsProcessingSyncPlayUpdate(false);
+                        }
                     } else {
-                        console.log('🎵 Item already playing, skipping media player restart');
+                        console.log('⚠️ Unknown PlayQueue reason:', reason);
+                        // Reset flag for unknown reasons
+                        this.callbacks.setIsProcessingSyncPlayUpdate(false);
                     }
                 } else {
-                    console.log('⚠️ Unknown PlayQueue reason:', reason);
+                    console.log('⚠️ No playing item found in playlist');
+                    this.callbacks.setIsProcessingSyncPlayUpdate(false);
                 }
             } else {
-                console.log('⚠️ No playing item found in playlist');
+                console.log('⚠️ No playlist or empty playlist received');
+                this.callbacks.onCurrentPlaylistItemIdChanged(null);
+                this.callbacks.setIsProcessingSyncPlayUpdate(false);
             }
-        } else {
-            console.log('⚠️ No playlist or empty playlist received');
-            this.callbacks.onCurrentPlaylistItemIdChanged(null);
+
+            // Reset flag after a delay to allow media to load and player to be ready
+            // The flag will also be reset when videoCanPlay event is received (handled in context)
+            setTimeout(() => {
+                this.callbacks.setIsProcessingSyncPlayUpdate(false);
+                console.log('✅ Reset isProcessingSyncPlayUpdate after timeout');
+            }, 3000); // 3 second timeout as fallback
+        } catch (error) {
+            console.error('❌ Error processing PlayQueue update:', error);
+            this.callbacks.setIsProcessingSyncPlayUpdate(false);
         }
     }
 

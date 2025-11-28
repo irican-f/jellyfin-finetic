@@ -405,26 +405,22 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
 
     // Playback control functions
     const requestPause = useCallback(async () => {
-        if (!isProcessingSyncPlayUpdate) {
-            try {
-                await syncPlayPause();
-                console.log('✅ SyncPlay pause request sent');
-            } catch (error) {
-                console.error('Failed to send pause request:', error);
-            }
+        try {
+            await syncPlayPause();
+            console.log('✅ SyncPlay pause request sent');
+        } catch (error) {
+            console.error('Failed to send pause request:', error);
         }
-    }, [isProcessingSyncPlayUpdate]);
+    }, []);
 
     const requestUnpause = useCallback(async () => {
-        if (!isProcessingSyncPlayUpdate) {
-            try {
-                await syncPlayUnpause();
-                console.log('✅ SyncPlay unpause state sent');
-            } catch (error) {
-                console.error('Failed to send unpause state:', error);
-            }
+        try {
+            await syncPlayUnpause();
+            console.log('✅ SyncPlay unpause state sent');
+        } catch (error) {
+            console.error('Failed to send unpause state:', error);
         }
-    }, [isProcessingSyncPlayUpdate]);
+    }, []);
 
     const requestStop = useCallback(async () => {
         try {
@@ -436,15 +432,13 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     const requestSeek = useCallback(async (positionTicks: number) => {
-        if (!isProcessingSyncPlayUpdate) {
-            try {
-                await syncPlaySeek(positionTicks);
-                console.log('✅ SyncPlay seek request sent:', positionTicks);
-            } catch (error) {
-                console.error('Failed to send seek request:', error);
-            }
+        try {
+            await syncPlaySeek(positionTicks);
+            console.log('✅ SyncPlay seek request sent:', positionTicks);
+        } catch (error) {
+            console.error('Failed to send seek request:', error);
         }
-    }, [isProcessingSyncPlayUpdate]);
+    }, []);
 
     const requestBuffering = useCallback(async (isBuffering: boolean, positionTicks: number) => {
         try {
@@ -506,23 +500,27 @@ export function SyncPlayProvider({ children }: { children: React.ReactNode }) {
 
     // Event handlers for player events (defined before registerPlayer to avoid closure issues)
     const handleUserPlay = useCallback(() => {
-        if (!isEnabled || !currentGroup || isProcessingSyncPlayUpdate) return;
+        if (!isEnabled || !currentGroup) return;
         // User initiated play - send unpause request to server
         requestUnpause();
     }, [isEnabled, currentGroup, isProcessingSyncPlayUpdate, requestUnpause]);
 
-    const handleUserPause = useCallback(() => {
-        if (!isEnabled || !currentGroup || isProcessingSyncPlayUpdate) return;
+    const handleUserPause = useCallback(async () => {
+        if (!isEnabled || !currentGroup) {
+            console.log('⏸️ User pause event received but conditions not met:', { isEnabled, hasGroup: !!currentGroup });
+            return;
+        }
         // User initiated pause - send pause request to server
-        requestPause();
+        console.log('⏸️ User pause event received - calling requestPause');
+        await requestPause();
     }, [isEnabled, currentGroup, isProcessingSyncPlayUpdate, requestPause]);
 
-    const handleUserSeek = useCallback((timeInSeconds: number) => {
-        if (!isEnabled || !currentGroup || isProcessingSyncPlayUpdate) return;
+    const handleUserSeek = useCallback(async (timeInSeconds: number) => {
+        if (!isEnabled || !currentGroup) return;
         // User initiated seek - send seek request to server
         const positionTicks = Math.floor(timeInSeconds * 10000000);
-        requestSeek(positionTicks);
-    }, [isEnabled, currentGroup, isProcessingSyncPlayUpdate, requestSeek]);
+        await requestSeek(positionTicks);
+    }, [isEnabled, currentGroup, requestSeek]);
 
     const handleVideoCanPlay = useCallback(() => {
         if (!isEnabled || !currentGroup || !playerRef.current) return;

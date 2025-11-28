@@ -8,6 +8,8 @@ import { Play, Eye, EyeOff } from "lucide-react";
 import { useMediaPlayer } from "@/contexts/MediaPlayerContext";
 import { markItemAsPlayed, markItemAsUnplayed } from "@/app/actions/playback";
 import { toast } from "sonner";
+import { useSyncPlay } from "@/contexts/SyncPlayContext";
+import { getNextEpisode } from "@/app/actions/episode-navigation";
 import {
   Popover,
   PopoverContent,
@@ -44,6 +46,7 @@ export function MediaCard({
   popoverEnabled?: boolean;
 }) {
   const { playMedia, setIsPlayerVisible } = useMediaPlayer();
+  const { isEnabled: isSyncPlayEnabled, setNewQueue } = useSyncPlay();
   const [isPopoverOpen, setPopoverOpen] = useState(false);
   const hoverTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -133,26 +136,61 @@ export function MediaCard({
     e.stopPropagation();
 
     if (item) {
-      await playMedia({
-        id: item.Id!,
-        name: item.Name!,
-        type: item.Type as "Movie" | "Series" | "Episode",
-        resumePositionTicks:
-          resumePosition || item.UserData?.PlaybackPositionTicks,
-      });
-      setIsPlayerVisible(true);
+      if (isSyncPlayEnabled) {
+        const startPosition = resumePosition || item.UserData?.PlaybackPositionTicks || 0;
+        // For episodes, include the next episode in the queue (like Jellyfin client does)
+        const itemIds = [item.Id!];
+        if (item.Type === "Episode") {
+          try {
+            const nextEpisode = await getNextEpisode(item.Id!);
+            if (nextEpisode?.Id) {
+              itemIds.push(nextEpisode.Id);
+            }
+          } catch (error) {
+            console.error("Failed to get next episode:", error);
+          }
+        }
+        await setNewQueue(itemIds, startPosition);
+      } else {
+        await playMedia({
+          id: item.Id!,
+          name: item.Name!,
+          type: item.Type as "Movie" | "Series" | "Episode",
+          resumePositionTicks:
+            resumePosition || item.UserData?.PlaybackPositionTicks,
+        });
+        setIsPlayerVisible(true);
+      }
     }
   };
 
   const handleContextualPlay = async () => {
     if (item) {
-      await playMedia({
-        id: item.Id!,
-        name: item.Name!,
-        type: item.Type as "Movie" | "Series" | "Episode",
-        resumePositionTicks: resumePosition || item.UserData?.PlaybackPositionTicks,
-      });
-      setIsPlayerVisible(true);
+      if (isSyncPlayEnabled) {
+        const startPosition = resumePosition || item.UserData?.PlaybackPositionTicks || 0;
+        // For episodes, include the next episode in the queue (like Jellyfin client does)
+        const itemIds = [item.Id!];
+        if (item.Type === "Episode") {
+          try {
+            const nextEpisode = await getNextEpisode(item.Id!);
+            if (nextEpisode?.Id) {
+              itemIds.push(nextEpisode.Id);
+            }
+          } catch (error) {
+            console.error("Failed to get next episode:", error);
+          }
+        }
+        await setNewQueue(itemIds, startPosition);
+        setIsPlayerVisible(true);
+      } else {
+        await playMedia({
+          id: item.Id!,
+          name: item.Name!,
+          type: item.Type as "Movie" | "Series" | "Episode",
+          resumePositionTicks: resumePosition || item.UserData?.PlaybackPositionTicks,
+        });
+        setIsPlayerVisible(true);
+      }
     }
   };
 

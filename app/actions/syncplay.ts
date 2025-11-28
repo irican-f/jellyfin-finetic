@@ -122,6 +122,7 @@ export async function syncPlayPause(): Promise<void> {
         const api = jellyfinInstance.createApi(serverUrl);
         api.accessToken = user.AccessToken;
 
+        console.log("⏸️ Pausing SyncPlay");
         await getSyncPlayApi(api).syncPlayPause();
     } catch (error) {
         console.error("Failed to pause SyncPlay:", error);
@@ -250,7 +251,8 @@ export async function syncPlaySetNewQueue(itemIds: string[], startPosition: numb
         api.accessToken = user.AccessToken;
 
         const requestBody = {
-            ItemIds: itemIds,
+            PlayingQueue: itemIds,
+            PlayingItemPosition: 0,
             StartPositionTicks: startPosition,
         };
 

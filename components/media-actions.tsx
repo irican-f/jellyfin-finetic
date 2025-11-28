@@ -36,6 +36,8 @@ import { DolbyDigital, DolbyTrueHd, DolbyVision, DtsHd } from "./icons/codecs";
 import { markItemAsPlayed, markItemAsUnplayed } from "@/app/actions/playback";
 import { toast } from "sonner";
 import { useRouter } from "next/navigation";
+import { useSyncPlay } from "@/contexts/SyncPlayContext";
+import { getNextEpisode } from "@/app/actions/episode-navigation";
 
 interface MediaActionsProps {
   movie?: JellyfinItem;
@@ -46,6 +48,7 @@ interface MediaActionsProps {
 export function MediaActions({ movie, show, episode }: MediaActionsProps) {
   const media = movie || show || episode;
   const { isPlayerVisible, setIsPlayerVisible, playMedia } = useMediaPlayer();
+  const { isEnabled: isSyncPlayEnabled, setNewQueue } = useSyncPlay();
   const router = useRouter();
   const [selectedVersion, setSelectedVersion] =
     useState<MediaSourceInfo | null>(null);
@@ -259,14 +262,32 @@ export function MediaActions({ movie, show, episode }: MediaActionsProps) {
           onClick={async () => {
             // Set the current media in context, GlobalMediaPlayer will handle the rest
             if (media) {
-              await playMedia({
-                id: media.Id!,
-                name: media.Name!,
-                type: media.Type as "Movie" | "Series" | "Episode",
-                resumePositionTicks: media.UserData?.PlaybackPositionTicks,
-                selectedVersion: selectedVersion,
-              });
-              setIsPlayerVisible(true);
+              if (isSyncPlayEnabled) {
+                const startPosition = media.UserData?.PlaybackPositionTicks || 0;
+                // For episodes, include the next episode in the queue (like Jellyfin client does)
+                const itemIds = [media.Id!];
+                if (media.Type === "Episode") {
+                  try {
+                    const nextEpisode = await getNextEpisode(media.Id!);
+                    if (nextEpisode?.Id) {
+                      itemIds.push(nextEpisode.Id);
+                    }
+                  } catch (error) {
+                    console.error("Failed to get next episode:", error);
+                  }
+                }
+                await setNewQueue(itemIds, startPosition);
+                setIsPlayerVisible(true);
+              } else {
+                await playMedia({
+                  id: media.Id!,
+                  name: media.Name!,
+                  type: media.Type as "Movie" | "Series" | "Episode",
+                  resumePositionTicks: media.UserData?.PlaybackPositionTicks,
+                  selectedVersion: selectedVersion,
+                });
+                setIsPlayerVisible(true);
+              }
             }
           }}
           className="gap-2"

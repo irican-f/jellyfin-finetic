@@ -448,9 +448,10 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
         // SyncPlay integration - emit user pause event
         // Context will subscribe to this event and decide whether to send pause command to server
         if (isSyncPlayEnabled) {
+            console.log('⏸️ Emitting userPause event');
             emitEvent('userPause');
         }
-    }, [playSessionId, currentMedia, selectedVersion, isSyncPlayEnabled, currentGroup, emitEvent]);
+    }, [playSessionId, currentMedia, selectedVersion, isSyncPlayEnabled, emitEvent]);
 
     // Handle video seek events
     const handleVideoSeeked = useCallback(async () => {
@@ -459,9 +460,9 @@ export function GlobalMediaPlayer({ onToggleAIAsk }: GlobalMediaPlayerProps) {
 
             // SyncPlay integration - emit user seek events
             // Context will subscribe to these events and decide whether to send seek command to server
-            // emitEvent('userSeek', currentTime);
+            emitEvent('userSeek', currentTime);
 
-            emitEvent('videoSeeked');
+            // emitEvent('videoSeeked');
         }
     }, [isSyncPlayEnabled, currentGroup, emitEvent]);
 
